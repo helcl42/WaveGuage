@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Wave Gauge Live</title>
 <style>
-:root{--bg:#081a20;--fg:#e3f0f2;--muted:#8aa5ad;--line:#21404a;--panel:rgba(8,26,32,.82);--wave:#3cc3cf;--scale:#f0a24a;--ink:#04191d;color-scheme:dark}
+:root{--bg:#081a20;--fg:#e3f0f2;--muted:#8aa5ad;--line:#21404a;--panel:rgba(8,26,32,.82);--wave:#3cc3cf;--hz:#f0a24a;--bad:#ff7a6b;--ink:#04191d;color-scheme:dark}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,sans-serif;overflow:hidden}
 #app{position:fixed;inset:0;display:flex;flex-direction:column}
 #view{position:relative;flex:1;min-height:0;background:#000;touch-action:none}
 video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
-#start{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center}
+#start{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;background:var(--bg)}
 #start h1{margin:0;font-size:1.6rem}
-#start p{margin:0;color:var(--muted);max-width:30em}
+#start p{margin:0;color:var(--muted);max-width:32em}
 #hint{position:absolute;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top,0px));background:var(--panel);padding:6px 12px;border-radius:999px;font-size:.85rem;white-space:nowrap;max-width:94%;overflow:hidden;text-overflow:ellipsis}
 #live{position:absolute;right:calc(10px + env(safe-area-inset-right,0px));top:calc(48px + env(safe-area-inset-top,0px));background:var(--panel);padding:8px 12px;border-radius:12px;text-align:right}
 #live .v{font-size:1.8rem;font-weight:800;font-variant-numeric:tabular-nums}
@@ -27,6 +27,8 @@ button[aria-pressed=true]{border-color:var(--fg);box-shadow:inset 0 0 0 1px var(
 .stats span{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .stats b{font-size:1.1rem}
 input{width:4.5em;font:inherit;padding:6px;border-radius:8px;border:1px solid var(--line);background:#0f262e;color:var(--fg)}
+.muted{color:var(--muted);font-size:.8rem}
+#hzs.ok{color:var(--hz)} #hzs.bad{color:var(--bad)}
 </style>
 </head>
 <body>
@@ -36,7 +38,7 @@ input{width:4.5em;font:inherit;padding:6px;border-radius:8px;border:1px solid va
     <canvas id="cv"></canvas>
     <div id="start">
       <h1>Wave Gauge Live</h1>
-      <p>Point at the break with a swimmer or surfer in view. Tap their feet and head once for scale, then tap each wave's trough and crest as it breaks.</p>
+      <p>Self-calibrating: keep the sea horizon in view and enter how high your phone is above the water. The page finds the horizon by itself; tap a wave's trough and crest to measure it.</p>
       <button class="primary" id="go">Start camera</button>
       <p id="err"></p>
     </div>
@@ -45,72 +47,109 @@ input{width:4.5em;font:inherit;padding:6px;border-radius:8px;border:1px solid va
   </div>
   <div id="bar">
     <div class="row">
-      <button id="mScale" aria-pressed="false">● Scale</button>
-      <button id="mWave" aria-pressed="false">● Wave</button>
+      <label for="h" style="flex:1;display:flex;gap:10px;align-items:center;min-width:0">Phone height
+        <input id="h" type="range" min="0.5" max="30" step="0.5" value="2" style="flex:1;width:auto;min-width:0;padding:0">
+        <b id="hv" style="font-variant-numeric:tabular-nums;min-width:4.5em;text-align:right">2.0 m</b></label>
+    </div>
+    <div class="row"><span id="hzs" class="muted">Horizon: searching…</span>
+    </div>
+    <div class="row">
       <button id="freeze">Freeze</button>
+      <button id="setHz" aria-pressed="false">Set horizon</button>
       <button id="undo">Undo</button>
       <button id="unit">ft</button>
     </div>
-    <div class="row"><label>Reference <input id="ref" type="number" step="0.05" value="1.75"> m</label>
-      <span style="color:var(--muted);font-size:.8rem">Surfer lying on board ≈ 0.3 m</span></div>
     <div class="stats">
       <div><span>Waves</span><b id="n">0</b></div>
       <div><span>Average</span><b id="avg">–</b></div>
       <div><span>Biggest third</span><b id="max">–</b></div>
     </div>
+    <div class="muted">Beach level ≈ 2 m. Higher is more accurate — measure from a bluff or lifeguard tower if you can.</div>
   </div>
 </div>
 <script>
 const $=id=>document.getElementById(id),vid=$('vid'),cv=$('cv'),cx=cv.getContext('2d');
-let mode='scale',sc=[],wp=[],waves=[],metric=false,frozen=false,stream=null;
+const off=document.createElement('canvas'),ox=off.getContext('2d',{willReadFrequently:true});
+let stream=null,frozen=false,metric=false,manual=false,setting=false,tp=[],waves=[];
+// horizon as two normalised points (video coords), left & right
+let hz=null,hzConf=0;
+
 function fit(){const r=cv.getBoundingClientRect();cv.width=r.width*devicePixelRatio;cv.height=r.height*devicePixelRatio;}
-// map tap to video-content coordinates (normalised), honouring object-fit:contain
 function box(){const W=cv.width,H=cv.height,vw=vid.videoWidth||W,vh=vid.videoHeight||H,k=Math.min(W/vw,H/vh);return{x:(W-vw*k)/2,y:(H-vh*k)/2,w:vw*k,h:vh*k,vw,vh};}
-function toN(e){const r=cv.getBoundingClientRect(),b=box(),px=(e.clientX-r.left)*devicePixelRatio,py=(e.clientY-r.top)*devicePixelRatio;return{x:(px-b.x)/b.w,y:(py-b.y)/b.h};}
+function toN(e){const r=cv.getBoundingClientRect(),b=box();return{x:((e.clientX-r.left)*devicePixelRatio-b.x)/b.w,y:((e.clientY-r.top)*devicePixelRatio-b.y)/b.h};}
 function toPx(p){const b=box();return[b.x+p.x*b.w,b.y+p.y*b.h];}
-function len(p){const b=box();return Math.hypot((p[1].x-p[0].x)*b.vw,(p[1].y-p[0].y)*b.vh);}
-const mpp=()=>sc.length===2?(+$('ref').value||1.75)/len(sc):null;
+
+// --- Automatic horizon detection: strongest sky/sea brightness edge in two vertical strips ---
+function detect(){
+  if(manual||frozen||!vid.videoWidth)return;
+  const W=160,H=Math.round(160*vid.videoHeight/vid.videoWidth);off.width=W;off.height=H;
+  ox.drawImage(vid,0,0,W,H);const d=ox.getImageData(0,0,W,H).data;
+  const strip=(x0,x1)=>{const L=new Float32Array(H);
+    for(let y=0;y<H;y++){let s=0;for(let x=x0;x<x1;x++){const i=(y*W+x)*4;s+=0.2*d[i]+0.5*d[i+1]+0.3*d[i+2]-0.25*(d[i+2]-d[i]);}L[y]=s/(x1-x0);}
+    let best=-1,by=0;for(let y=3;y<H*0.85;y++){const g=Math.abs((L[y-3]+L[y-2]+L[y-1])-(L[y]+L[y+1]+L[y+2]))/3;if(g>best){best=g;by=y-0.5;}}
+    return{y:by/H,g:best};};
+  const a=strip(Math.round(W*.1),Math.round(W*.3)),b=strip(Math.round(W*.7),Math.round(W*.9));
+  const conf=Math.min(a.g,b.g),agree=Math.abs(a.y-b.y)<0.12;
+  if(conf>6&&agree){
+    const n=[{x:.2,y:a.y},{x:.8,y:b.y}];
+    hz=hz?hz.map((p,i)=>({x:p.x,y:p.y*0.7+n[i].y*0.3})):n;hzConf=conf;
+  }else hzConf=0;
+  status();
+}
+// signed perpendicular distance below horizon, in video pixels
+function below(p,line=hz){const b=box(),[A,B]=line,ax=A.x*b.vw,ay=A.y*b.vh,bx=B.x*b.vw,by=B.y*b.vh,px=p.x*b.vw,py=p.y*b.vh;
+  const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy);return((px-ax)*dy*-1+(py-ay)*dx)/len;}
+// H = h * (d_trough - d_crest) / d_trough   (camera focal length cancels)
+function height(w){if(!w.hz)return null;const dt=below(w.p[0],w.hz),dc=below(w.p[1],w.hz);if(dt<=2)return null;return Math.max(0,(+$('h').value||2)*(dt-dc)/dt);}
+function showH(){const v=+$('h').value;$('hv').textContent=metric?v.toFixed(1)+' m':(v*3.281).toFixed(0)+' ft';}
+
 const fmt=m=>m==null?'–':metric?m.toFixed(2)+' m':(m*3.281).toFixed(1)+' ft';
 function surf(m){if(m==null)return'';const f=m*3.281;return f<1.5?'ankle–knee':f<2.5?'knee–thigh':f<3.5?'waist high':f<4.5?'chest high':f<5.5?'shoulder high':f<7?'head high':'overhead';}
-function hint(){const h=$('hint');h.hidden=false;
-  h.textContent=mode==='scale'?(sc.length?'Tap the top of their head':'Tap a person’s feet / waterline'):
-    (!mpp()?'Set scale first':wp.length?'Tap the crest':'Tap the trough of a breaking wave');}
-function stats(){const k=mpp(),ms=waves.map(w=>k?len(w)*k:null).filter(v=>v!=null);
-  $('n').textContent=waves.length;
+function status(){const s=$('hzs');
+  if(manual){s.className='ok';s.textContent='Horizon: set by hand';}
+  else if(hz&&hzConf){s.className='ok';s.textContent='Horizon: locked';}
+  else{s.className='bad';s.textContent=hz?'Horizon: weak — hold steady':'Horizon: searching…';}
+  const h=$('hint');h.hidden=false;
+  h.textContent=setting?(tp.length?'Tap the horizon on the right':'Tap the horizon on the left'):
+    !hz?'Point at the sea with the horizon in view':tp.length?'Tap the crest':'Tap the trough of a breaking wave';}
+function stats(){const ms=waves.map(w=>w.m).filter(v=>v!=null);$('n').textContent=ms.length;
   const avg=ms.length?ms.reduce((a,b)=>a+b)/ms.length:null,t=[...ms].sort((a,b)=>b-a),n=Math.max(1,Math.ceil(t.length/3)),big=ms.length?t.slice(0,n).reduce((a,b)=>a+b)/n:null;
   $('avg').textContent=fmt(avg);$('max').textContent=fmt(big);
   const last=ms.length?ms[ms.length-1]:null;$('live').hidden=last==null;$('lv').textContent=fmt(last);$('ls').textContent=surf(last);}
+
 function draw(){
-  cx.clearRect(0,0,cv.width,cv.height);
-  if(frozen){const b=box();cx.drawImage(vid,b.x,b.y,b.w,b.h);}
-  const lw=3*devicePixelRatio,seg=(p,c)=>{cx.strokeStyle=cx.fillStyle=c;cx.lineWidth=lw;
+  cx.clearRect(0,0,cv.width,cv.height);const dpr=devicePixelRatio,b=box();
+  if(frozen)cx.drawImage(vid,b.x,b.y,b.w,b.h);
+  if(hz){const[A,B]=hz,ax=b.x+A.x*b.w,ay=b.y+A.y*b.h,bx=b.x+B.x*b.w,by=b.y+B.y*b.h,k=(by-ay)/(bx-ax);
+    cx.strokeStyle=hzConf||manual?'#f0a24a':'rgba(255,122,107,.8)';cx.lineWidth=2*dpr;cx.setLineDash([10*dpr,6*dpr]);
+    cx.beginPath();cx.moveTo(b.x,ay+k*(b.x-ax));cx.lineTo(b.x+b.w,ay+k*(b.x+b.w-ax));cx.stroke();cx.setLineDash([]);}
+  const lw=3*dpr,seg=(p,c)=>{cx.strokeStyle=cx.fillStyle=c;cx.lineWidth=lw;
     p.forEach(q=>{const[x,y]=toPx(q);cx.beginPath();cx.arc(x,y,lw*2,0,7);cx.fill();});
-    if(p.length===2){const[a,b]=[toPx(p[0]),toPx(p[1])];cx.beginPath();cx.moveTo(...a);cx.lineTo(...b);cx.stroke();}};
-  seg(sc,'#f0a24a');
-  // live ruler: tick marks every 0.5 m from the scale feet point
-  const k=mpp();if(k&&!frozen){const b=box(),[x0,y0]=toPx(sc[0]),step=0.5/k*(b.h/b.vh);
-    cx.strokeStyle='rgba(240,162,74,.6)';cx.fillStyle='#f0a24a';cx.font=`${11*devicePixelRatio}px system-ui`;cx.lineWidth=1.5*devicePixelRatio;
-    for(let i=1;i<=6;i++){const y=y0-i*step;if(y<0)break;cx.beginPath();cx.moveTo(x0-12*devicePixelRatio,y);cx.lineTo(x0+12*devicePixelRatio,y);cx.stroke();cx.fillText(fmt(i*.5),x0+16*devicePixelRatio,y+4*devicePixelRatio);}}
-  waves.slice(-3).forEach(w=>seg(w,'rgba(60,195,207,.55)'));seg(wp,'#3cc3cf');
+    if(p.length===2){const[a,c2]=[toPx(p[0]),toPx(p[1])];cx.beginPath();cx.moveTo(...a);cx.lineTo(...c2);cx.stroke();}};
+  waves.slice(-3).forEach(w=>seg(w.p,'rgba(60,195,207,.55)'));
+  if(!setting)seg(tp,'#3cc3cf');else seg(tp,'#f0a24a');
   requestAnimationFrame(draw);
 }
-function setMode(m){mode=m;$('mScale').setAttribute('aria-pressed',m==='scale');$('mWave').setAttribute('aria-pressed',m==='wave');hint();}
 cv.addEventListener('pointerdown',e=>{if(!stream)return;const p=toN(e);
-  if(mode==='scale'){if(sc.length===2)sc=[];sc.push(p);if(sc.length===2)setMode('wave');}
-  else{wp.push(p);if(wp.length===2){waves.push(wp);wp=[];if(frozen)toggleFreeze();}}
-  hint();stats();});
+  if(setting){tp.push(p);if(tp.length===2){hz=tp[0].x<tp[1].x?tp:[tp[1],tp[0]];tp=[];setting=false;manual=true;$('setHz').setAttribute('aria-pressed','false');$('setHz').textContent='Auto horizon';}}
+  else{if(!hz)return;tp.push(p);if(tp.length===2){
+      // keep the horizon this wave was measured against
+      const w={p:tp,hz:hz.map(q=>({...q})),m:null};tp=[];
+      w.m=height(w);waves.push(w);if(frozen)toggleFreeze();}}
+  status();stats();});
 function toggleFreeze(){frozen=!frozen;frozen?vid.pause():vid.play();$('freeze').textContent=frozen?'Resume':'Freeze';}
 $('freeze').onclick=toggleFreeze;
-$('mScale').onclick=()=>{sc=[];setMode('scale');stats();};
-$('mWave').onclick=()=>setMode('wave');
-$('undo').onclick=()=>{if(wp.length)wp.pop();else if(waves.length)waves.pop();else sc.pop();hint();stats();};
-$('unit').onclick=()=>{metric=!metric;$('unit').textContent=metric?'m':'ft';stats();};
-$('ref').oninput=stats;
+$('setHz').onclick=()=>{if(manual&&!setting){manual=false;hz=null;$('setHz').textContent='Set horizon';status();return;}
+  setting=!setting;tp=[];$('setHz').setAttribute('aria-pressed',setting);status();};
+$('undo').onclick=()=>{if(tp.length)tp.pop();else waves.pop();status();stats();};
+$('unit').onclick=()=>{metric=!metric;$('unit').textContent=metric?'m':'ft';showH();stats();};
+$('h').oninput=()=>{waves.forEach(w=>w.m=height(w));showH();stats();};
+showH();
 $('go').onclick=async()=>{
   try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920}},audio:false});
-    vid.srcObject=stream;await vid.play();$('start').hidden=true;fit();setMode('scale');stats();draw();
+    vid.srcObject=stream;await vid.play();$('start').hidden=true;fit();status();stats();draw();setInterval(detect,150);
     try{await navigator.wakeLock?.request('screen');}catch{}
-  }catch(err){$('err').textContent='Camera unavailable: '+err.message+'. The page must be opened over https and camera access allowed.';}
+  }catch(err){$('err').textContent='Camera unavailable: '+err.message+'. Open the page over https in Safari or Chrome and allow camera access.';}
 };
 addEventListener('resize',fit);
 </script>

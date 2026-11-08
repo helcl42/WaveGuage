@@ -30,16 +30,25 @@ button[aria-pressed=true]{border-color:var(--fg);box-shadow:inset 0 0 0 1px var(
 input{width:4.5em;font:inherit;padding:6px;border-radius:8px;border:1px solid var(--line);background:#0f262e;color:var(--fg)}
 .muted{color:var(--muted);font-size:.8rem}
 #hzs.ok{color:var(--hz)} #hzs.bad{color:var(--bad)}
+.seg{display:inline-flex;margin-left:auto}
+.seg button{border-radius:0;padding:10px 14px}
+.seg button:first-child{border-radius:10px 0 0 10px}
+.seg button:last-child{border-radius:0 10px 10px 0;border-left:0}
+.seg button[aria-pressed=true]{background:var(--fg);color:var(--ink);box-shadow:none;border-color:var(--fg)}
+#arOverlay{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:12px;padding:24px max(16px,env(safe-area-inset-left,0px)) calc(32px + env(safe-area-inset-bottom,0px));pointer-events:none}
+#arOverlay .card{background:var(--panel);border-radius:14px;padding:14px 16px;text-align:center;max-width:26em;pointer-events:auto}
+#arVal{font-size:2rem;font-weight:800;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
+<div id="arOverlay" hidden><div class="card"><div id="arTxt">Stand at the water's edge and point the phone at the sand in front of your feet. Hold it at the height you'll film from.</div><div id="arVal">–</div><button id="arCancel">Cancel</button></div></div>
 <div id="app">
   <div id="view">
     <video id="vid" playsinline muted autoplay></video>
     <canvas id="cv"></canvas>
     <div id="start">
       <h1>Wave Gauge Live</h1>
-      <p>Self-calibrating: keep the sea horizon in view and enter how high your phone is above the water. The page finds the horizon and logs breaking waves by itself, or tap a wave's trough and crest.</p>
+      <p>Keep the sea horizon in view and set how high your phone is above the water. The page finds the horizon and logs breaking waves by itself, or tap a wave's trough and crest.</p>
       <button class="primary" id="go">Start camera</button>
       <p id="err"></p>
     </div>
@@ -51,71 +60,154 @@ input{width:4.5em;font:inherit;padding:6px;border-radius:8px;border:1px solid va
       <label for="h" style="flex:1;display:flex;gap:10px;align-items:center;min-width:0">Phone height
         <input id="h" type="range" min="0.05" max="2" step="0.05" value="1.2" style="flex:1;width:auto;min-width:0;padding:0">
         <b id="hv" style="font-variant-numeric:tabular-nums;min-width:4.5em;text-align:right">120 cm</b></label>
+      <button id="arBtn" hidden>Measure</button>
+    </div>
+    <div class="muted" id="arMsg" hidden></div>
+    <div class="row">
+      <label for="lens">Lens <input id="lens" type="number" min="10" max="120" step="1" value="26"> mm</label>
+      <span class="muted">35 mm equivalent of the camera in use; 1× on most phones is 24–26</span>
     </div>
     <div class="row" style="justify-content:space-between"><span id="hzs" class="muted">Horizon: searching…</span><span id="as" class="muted"></span></div>
     <div class="row">
       <button id="auto" aria-pressed="true">Auto</button>
       <button id="freeze">Freeze</button>
       <button id="setHz" aria-pressed="false">Set horizon</button>
-      <button id="undo">Undo</button>
+      <button id="undo" hidden>Remove last wave</button>
+      <span class="seg" role="group" aria-label="Units"><button id="uCm" aria-pressed="true">cm</button><button id="uFt" aria-pressed="false">ft</button></span>
     </div>
     <div class="stats">
       <div><span>Waves</span><b id="n">0</b></div>
       <div><span>Average</span><b id="avg">–</b></div>
       <div><span>Biggest third</span><b id="max">–</b></div>
     </div>
-    <div class="muted">Phone height counts from the water surface, not the sand. Hold the phone as still as you can: small hand shake is compensated, big moves can cause false waves.</div>
+    <div class="muted">Phone height counts from the still water level, not the sand. Use the 1× camera and hold the phone as still as you can.</div>
   </div>
 </div>
 <script>
 const $=id=>document.getElementById(id),vid=$('vid'),cv=$('cv'),cx=cv.getContext('2d');
 const off=document.createElement('canvas'),ox=off.getContext('2d',{willReadFrequently:true});
-let stream=null,frozen=false,manual=false,setting=false,tp=[],waves=[];
-// horizon as two normalised points (video coords), left & right
-let hz=null,hzConf=0;
+const rc=document.createElement('canvas'),rx=rc.getContext('2d',{willReadFrequently:true});
+let stream=null,frozen=false,manual=false,setting=false,tp=[],waves=[],hMeasured=null;
+const phoneH=()=>hMeasured??(+$('h').value||1.2);
+// Horizon lines are two normalised points [{x,y},{x,y}] in video coordinates (0..1, pixel edges).
+// hz = smoothed line for display; hzFrame = this snapshot's line, used for measuring.
+let hz=null,hzFrame=null,hzConf=0,hzTrack=null,trackMiss=0;  // hzTrack: the hand-picked horizon, followed frame to frame
 
 function fit(){const r=cv.getBoundingClientRect();cv.width=r.width*devicePixelRatio;cv.height=r.height*devicePixelRatio;}
 function box(){const W=cv.width,H=cv.height,vw=vid.videoWidth||W,vh=vid.videoHeight||H,k=Math.min(W/vw,H/vh);return{x:(W-vw*k)/2,y:(H-vh*k)/2,w:vw*k,h:vh*k,vw,vh};}
 function toN(e){const r=cv.getBoundingClientRect(),b=box();return{x:((e.clientX-r.left)*devicePixelRatio-b.x)/b.w,y:((e.clientY-r.top)*devicePixelRatio-b.y)/b.h};}
 function toPx(p){const b=box();return[b.x+p.x*b.w,b.y+p.y*b.h];}
+const lum=(d,i)=>0.2*d[i]+0.5*d[i+1]+0.3*d[i+2]-0.25*(d[i+2]-d[i]);
 
-// --- One snapshot per tick: find the horizon, then look for breaking waves ---
+// ===== Geometry =====
+// Pinhole camera, principal point at the frame centre, focal length from the 35 mm-equivalent lens:
+// the 35 mm frame's long side (4:3 crop of the 43.3 mm diagonal) is 34.6 mm.
+function focalPx(){return (+$('lens').value||26)/34.6*Math.max(vid.videoWidth,vid.videoHeight);}
+// Depression angle (rad) of the ray through image point p, below TRUE horizontal.
+// The horizon line is back-projected to a plane through the camera (normal = K^T l);
+// the visible sea horizon lies below true horizontal by the dip, which is added back.
+function depression(p,line,f,dip){
+  const vw=vid.videoWidth,vh=vid.videoHeight,P=q=>[q.x*vw-vw/2,q.y*vh-vh/2,1];
+  const a=P(line[0]),b=P(line[1]);
+  const l=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+  let n=[f*l[0],f*l[1],l[2]];
+  const probe=[(a[0]+b[0])/2,(a[1]+b[1])/2+50,f];               // a ray clearly below the line
+  if(n[0]*probe[0]+n[1]*probe[1]+n[2]*probe[2]<0)n=n.map(v=>-v);  // make n point "down"
+  const r=[p.x*vw-vw/2,p.y*vh-vh/2,f];
+  return Math.asin((n[0]*r[0]+n[1]*r[1]+n[2]*r[2])/(Math.hypot(...n)*Math.hypot(...r)))+dip;
+}
+// The trough of a breaking wave sits below still water (crest ~0.7·H above, trough ~0.3·H below).
+const TROUGH=0.3;
+// Camera at height h above still water, trough a·H below it, crest straight above the trough:
+//   D = (h + aH)/tan φt,  H = (h + aH)(1 − tan φc / tan φt)  →  H = h·r / (1 − a·r)
+function height(w){
+  if(!w.hz||!vid.videoWidth)return null;
+  const h=phoneH(),f=focalPx(),dip=1.76/60*Math.PI/180*Math.sqrt(h); // dip ≈ 1.76′·√h(m), incl. refraction
+  const pt=depression(w.p[0],w.hz,f,dip),pc=depression(w.p[1],w.hz,f,dip);
+  if(pt<=0.0005)return null;                 // trough on or above the horizon: not measurable
+  const r=1-Math.tan(pc)/Math.tan(pt);
+  if(r<=0)return 0;
+  const den=1-TROUGH*r;if(den<=0.2)return null;  // crest far above eye level: ill-conditioned
+  return h*r/den;
+}
+
+// ===== Horizon =====
+// One snapshot per tick: coarse horizon on a downscaled frame, refined at full resolution, then waves.
 function detect(){
-  if(frozen||!vid.videoWidth)return;
-  const W=160,H=Math.round(160*vid.videoHeight/vid.videoWidth);off.width=W;off.height=H;
+  if(frozen||!stream||!vid.videoWidth)return;
+  const W=320,H=Math.round(W*vid.videoHeight/vid.videoWidth);off.width=W;off.height=H;
   ox.drawImage(vid,0,0,W,H);const d=ox.getImageData(0,0,W,H).data;
-  if(!manual)findHorizon(d,W,H);
-  waveTick(d,W,H);
+  // how far the picture moved since the last snapshot (hand shake), from brightness profiles
+  const n=W*H,Lm=new Float32Array(n),C=new Float32Array(W),R=new Float32Array(H);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=(y*W+x)*4,l=(d[i]+2*d[i+1]+d[i+2])/4;Lm[y*W+x]=l;C[x]+=l/H;R[y]+=l/W;}
+  let dx=0,dy=0;if(prevC&&prevC.length===W&&prevR.length===H){dx=bestShift(C,prevC,12);dy=bestShift(R,prevR,12);}prevC=C;prevR=R;
+  let line;
+  if(manual&&hzTrack){
+    // follow the picked horizon: predict it from the camera shift, then lock onto the edge nearest the prediction
+    const pred=hzTrack.map(p=>({x:p.x,y:p.y+dy/H}));
+    const fine=refineHorizon(pred,0.015);
+    if(fine){hzTrack=fine;trackMiss=0;}else{hzTrack=pred;trackMiss++;}
+    line=hzTrack;hzConf=trackMiss<20?1:0;hz=line;
+  }else{
+    line=findHorizon(d,W,H);
+    if(line){const fine=refineHorizon(line,0.025);if(fine)line=fine;}
+    if(line)hz=hz&&Math.abs(hz[0].y-line[0].y)<0.05?hz.map((p,i)=>({x:p.x,y:p.y*0.5+line[i].y*0.5})):line;
+  }
+  hzFrame=line;
+  waveTick(d,W,H,Lm,dx,dy);
   status();
 }
-// Horizon: the TOPMOST strong brightness edge in five strips (sky meets sea before rocks, surf or sand do)
+// Coarse: the TOPMOST strong brightness edge in five strips (sky meets sea before rocks, surf or sand do)
 function findHorizon(d,W,H){
   const strip=(x0,x1)=>{const L=new Float32Array(H),G=new Float32Array(H);
-    for(let y=0;y<H;y++){let s=0;for(let x=x0;x<x1;x++){const i=(y*W+x)*4;s+=0.2*d[i]+0.5*d[i+1]+0.3*d[i+2]-0.25*(d[i+2]-d[i]);}L[y]=s/(x1-x0);}
+    for(let y=0;y<H;y++){let s=0;for(let x=x0;x<x1;x++)s+=lum(d,(y*W+x)*4);L[y]=s/(x1-x0);}
     let mx=0;for(let y=3;y<H*0.85;y++){G[y]=Math.abs((L[y-3]+L[y-2]+L[y-1])-(L[y]+L[y+1]+L[y+2]))/3;mx=Math.max(mx,G[y]);}
     if(mx<6)return null;
     let y=3;while(y<H*0.85&&G[y]<mx*0.5)y++;
     while(y+1<H*0.85&&G[y+1]>=G[y])y++;
     return{x:(x0+x1)/2/W,y:(y-0.5)/H,g:G[y]};};
   const pts=[];for(let i=0;i<5;i++){const r=strip(Math.round(W*(.05+i*.18)),Math.round(W*(.05+i*.18+.14)));if(r)pts.push(r);}
-  let ok=false;
-  if(pts.length>=3){
-    const med=[...pts].map(p=>p.y).sort((a,b)=>a-b)[pts.length>>1];
-    const inl=pts.filter(p=>Math.abs(p.y-med)<0.04);
-    if(inl.length>=3){
-      const n=inl.length,mxv=inl.reduce((s,p)=>s+p.x,0)/n,myv=inl.reduce((s,p)=>s+p.y,0)/n;
-      let sxy=0,sxx=0;inl.forEach(p=>{sxy+=(p.x-mxv)*(p.y-myv);sxx+=(p.x-mxv)**2;});
-      const k=sxx?sxy/sxx:0,line=[{x:.1,y:myv+k*(.1-mxv)},{x:.9,y:myv+k*(.9-mxv)}];
-      hz=hz&&Math.abs(hz[0].y-line[0].y)<0.05?hz.map((p,i)=>({x:p.x,y:p.y*0.6+line[i].y*0.4})):line;
-      hzConf=Math.min(...inl.map(p=>p.g));ok=true;
-    }
+  hzConf=0;if(pts.length<3)return null;
+  const med=[...pts].map(p=>p.y).sort((a,b)=>a-b)[pts.length>>1];
+  const inl=pts.filter(p=>Math.abs(p.y-med)<0.04);if(inl.length<3)return null;
+  hzConf=Math.min(...inl.map(p=>p.g));
+  return fitLine(inl);
+}
+function fitLine(pts){const n=pts.length,mx=pts.reduce((s,p)=>s+p.x,0)/n,my=pts.reduce((s,p)=>s+p.y,0)/n;
+  let sxy=0,sxx=0;pts.forEach(p=>{sxy+=(p.x-mx)*(p.y-my);sxx+=(p.x-mx)**2;});const k=sxx?sxy/sxx:0;
+  return[{x:.1,y:my+k*(.1-mx)},{x:.9,y:my+k*(.9-mx)}];}
+// Fine: in seven narrow strips, find the edge at full vertical resolution with sub-pixel peak interpolation
+function refineHorizon(line,bandFrac){
+  const vw=vid.videoWidth,vh=vid.videoHeight,[A,B]=line,k=(B.y-A.y)/(B.x-A.x),band=Math.max(8,Math.round(vh*bandFrac)),pts=[];
+  for(let i=0;i<7;i++){
+    const xn=0.08+i*0.14,cy=Math.round((A.y+k*(xn-A.x))*vh),sy=Math.max(0,cy-band),sh=Math.min(vh,cy+band)-sy;
+    const sw=Math.max(4,Math.round(vw*0.06)),sx=Math.max(0,Math.min(vw-sw,Math.round(xn*vw-sw/2)));if(sh<10)continue;
+    rc.width=16;rc.height=sh;rx.drawImage(vid,sx,sy,sw,sh,0,0,16,sh);
+    const d=rx.getImageData(0,0,16,sh).data,L=new Float32Array(sh),G=new Float32Array(sh);
+    for(let y=0;y<sh;y++){let s=0;for(let x=0;x<16;x++)s+=lum(d,(y*16+x)*4);L[y]=s/16;}
+    let mx=0;for(let y=2;y<sh-2;y++){G[y]=Math.abs((L[y+1]+L[y+2])-(L[y-1]+L[y-2]))/2;if(G[y]>mx)mx=G[y];}
+    if(mx<4)continue;
+    // up to three candidate edges per strip: an island or ship on the horizon makes a strong edge ABOVE the weaker sea edge
+    const cand=[];for(let y=3;y<sh-3;y++)if(G[y]>=G[y-1]&&G[y]>G[y+1]&&G[y]>=Math.max(4,mx*0.12))cand.push(y);
+    cand.sort((p,q)=>G[q]-G[p]);
+    const xs=(sx+sw/2)/vw,c3=cand.slice(0,3).map(y=>{const a=G[y-1],b=G[y],c=G[y+1],den=a-2*b+c,o=den?0.5*(a-c)/den:0;
+      return{x:xs,y:(sy+y+Math.max(-1,Math.min(1,o))+0.5)/vh,s:i};});
+    if(c3.length)pts.push(c3);
   }
-  if(!ok)hzConf=0;
+  if(pts.length<3)return null;
+  // consensus: try lines through candidate pairs from two strips; score = strips agreeing (within 1.2 px), then smallest residual
+  let keep=[],bestErr=1e9;
+  for(let i=0;i<pts.length;i++)for(let j=i+1;j<pts.length;j++)for(const a of pts[i])for(const b of pts[j]){
+    const kk=(b.y-a.y)/(b.x-a.x),inl=[];let err=0;
+    for(const strip of pts){let bp=null,be=1.2;for(const p of strip){const e=Math.abs(p.y-(a.y+kk*(p.x-a.x)))*vh;if(e<be){be=e;bp=p;}}if(bp){inl.push(bp);err+=be*be;}}
+    if(inl.length>keep.length||(inl.length===keep.length&&err<bestErr)){keep=inl;bestErr=err;}}
+  return keep.length>=3?fitLine(keep):null;
 }
 
-// --- Automatic wave detection ---
+// ===== Automatic wave detection =====
 // A breaking wave shows up as NEW whitewater where the water was blue a moment ago.
 // The background model follows hand shake by matching brightness profiles between snapshots.
+// Each detection is then re-measured at full camera resolution.
 let auto=true,bg=null,prevC=null,prevR=null,ev=null,cool=0,live=null,flashT=-1e9;
 function bestShift(a,b,R){let best=0,bs=1e18;
   for(let s=-R;s<=R;s++){let e=0,c=0;for(let i=Math.max(0,s);i<a.length+Math.min(0,s);i++){e+=Math.abs(a[i]-b[i-s]);c++;}e/=c;if(e<bs){bs=e;best=s;}}
@@ -134,12 +226,31 @@ function largestBlob(m,W,H){
   for(let j=0;j<n;j++)if(lab[j]===best.id){const x=j%W,y=(j/W)|0;if(y<y0[x])y0[x]=y;if(y>y1[x])y1[x]=y;}
   let bx=-1,ext=0;for(let x=0;x<W;x++)if(y1[x]>=0&&y1[x]-y0[x]+1>ext){ext=y1[x]-y0[x]+1;bx=x;}
   return{area:best.area,x:bx,y0:y0[bx],y1:y1[bx],ext,y0s:y0,y1s:y1};}
-function waveTick(d,W,H){
-  const n=W*H,Lm=new Float32Array(n),C=new Float32Array(W),R=new Float32Array(H);
-  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=(y*W+x)*4,l=(d[i]+2*d[i+1]+d[i+2])/4;Lm[y*W+x]=l;C[x]+=l/H;R[y]+=l/W;}
-  let dx=0,dy=0;if(prevC&&prevC.length===W&&prevR.length===H){dx=bestShift(C,prevC,6);dy=bestShift(R,prevR,6);}prevC=C;prevR=R;
-  if(!auto||!hz){bg=null;ev=null;live=null;return;}
-  const[A,B]=hz,k=(B.y-A.y)/(B.x-A.x),gap=Math.round(H*.04),top=new Int16Array(W);
+// Re-measure a detected blob on the full-resolution frame, inside the coarse box ±1 cell.
+function refineWave(b,W,H,thr){
+  const vw=vid.videoWidth,vh=vid.videoHeight;
+  const sx=Math.max(0,Math.floor((b.x-3)/W*vw)),ex=Math.min(vw,Math.ceil((b.x+4)/W*vw));
+  const sy=Math.max(0,Math.floor((b.y0-1)/H*vh)),ey=Math.min(vh,Math.ceil((b.y1+2)/H*vh));
+  const sw=ex-sx,sh=ey-sy;if(sw<2||sh<2)return null;
+  rc.width=sw;rc.height=sh;rx.drawImage(vid,sx,sy,sw,sh,0,0,sw,sh);const d=rx.getImageData(0,0,sw,sh).data;
+  const white=(x,y)=>{const j=(y*sw+x)*4,mx=Math.max(d[j],d[j+1],d[j+2]),mn=Math.min(d[j],d[j+1],d[j+2]);return mx>thr&&mx-mn<60;};
+  const mid=Math.round((b.y0+b.y1+1)/2/H*vh)-sy,gap=Math.max(2,Math.round(sh*0.03)),res=[];
+  for(let x=0;x<sw;x++){
+    let s=-1;for(let r=0;r<sh;r++){const a=mid-r,c=mid+r;if(a<0&&c>=sh)break;if(a>=0&&a<sh&&white(x,a)){s=a;break;}if(c>=0&&c<sh&&white(x,c)){s=c;break;}}
+    if(s<0)continue;
+    let t=s,g=0;for(let y=s-1;y>=0;y--){if(white(x,y)){t=y;g=0;}else if(++g>gap)break;}
+    let bo=s;g=0;for(let y=s+1;y<sh;y++){if(white(x,y)){bo=y;g=0;}else if(++g>gap)break;}
+    res.push({x,t,b:bo,e:bo-t+1});
+  }
+  if(!res.length)return null;
+  res.sort((p,q)=>p.e-q.e);const r=res[Math.floor((res.length-1)*0.8)];   // 80th percentile column: robust to stray pixels
+  const xn=(sx+r.x+0.5)/vw;
+  return[{x:xn,y:(sy+r.b+1)/vh},{x:xn,y:(sy+r.t)/vh}];                 // [trough (bottom edge), crest (top edge)]
+}
+function waveTick(d,W,H,Lm,dx,dy){
+  const n=W*H,L=hzFrame;
+  if(!auto||!L){if(!auto||!hz){bg=null;ev=null;}live=null;return;}
+  const[A,B]=L,k=(B.y-A.y)/(B.x-A.x),gap=Math.round(H*.015),top=new Int16Array(W);
   for(let x=0;x<W;x++)top[x]=Math.min(H,Math.max(1,Math.ceil((A.y+k*((x+.5)/W-A.x))*H)+gap));
   // whiteness threshold adapts to how bright the water is
   let s=0,c=0;for(let x=0;x<W;x+=2)for(let y=top[x];y<H;y+=2){s+=Lm[y*W+x];c++;}
@@ -156,7 +267,7 @@ function waveTick(d,W,H){
     if(m<0.25)nw[j]=1;}
   const blob=largestBlob(nw,W,H),now=performance.now();
   let isNew=false;
-  if(blob&&blob.area>=Math.max(15,n*0.0012)&&blob.ext>=3){
+  if(blob&&blob.area>=Math.max(20,n*0.0004)&&blob.ext>=3){
     // reject whitewater that only grows out of old foam on its seaward side (a rolling bore, not a new break)
     let cols=0,touch=0;
     for(let x=0;x<W;x++){if(blob.y1s[x]<0)continue;cols++;let t=0;
@@ -167,38 +278,46 @@ function waveTick(d,W,H){
   live=null;
   if(isNew&&now>cool){
     if(!ev)ev={t0:now,frames:0,best:null};
-    ev.frames++;ev.last=now;if(!ev.best||blob.ext>ev.best.ext)ev.best=blob;
-    live={x:(blob.x+.5)/W,y0:blob.y0/H,y1:(blob.y1+1)/H};
+    ev.frames++;ev.last=now;
+    if(!ev.best||blob.ext>ev.best.ext){
+      const fine=refineWave(blob,W,H,thr),x=(blob.x+.5)/W;
+      ev.best={ext:blob.ext,p:fine||[{x,y:(blob.y1+1)/H},{x,y:blob.y0/H}],hz:L.map(q=>({...q}))};
+    }
+    live=ev.best.p;
   }
   if(ev&&(now-ev.t0>1500||now-ev.last>500)){
-    if(ev.frames>=2){const b=ev.best,x=(b.x+.5)/W;
-      const w={p:[{x,y:(b.y1+1)/H},{x,y:b.y0/H}],hz:hz.map(q=>({...q})),m:null,auto:true};
+    if(ev.frames>=2){const w={p:ev.best.p,hz:ev.best.hz,m:null,auto:true};
       w.m=height(w);if(w.m!=null){waves.push(w);flashT=now;stats();}
       cool=now+4000;}
     ev=null;
   }
 }
-// signed perpendicular distance below horizon, in video pixels
-function below(p,line=hz){const b=box(),[A,B]=line,ax=A.x*b.vw,ay=A.y*b.vh,bx=B.x*b.vw,by=B.y*b.vh,px=p.x*b.vw,py=p.y*b.vh;
-  const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy);return((px-ax)*dy*-1+(py-ay)*dx)/len;}
-// H = h * (d_trough - d_crest) / d_trough   (camera focal length cancels)
-function height(w){if(!w.hz)return null;const dt=below(w.p[0],w.hz),dc=below(w.p[1],w.hz);if(dt<=2)return null;return Math.max(0,(+$('h').value||1.2)*(dt-dc)/dt);}
-function showH(){const v=+$('h').value;$('hv').textContent=Math.round(v*100)+' cm';}
 
-const fmt=m=>m==null?'–':Math.round(m*100)+' cm';
+// ===== UI =====
+let units='cm';try{if(localStorage.getItem('units')==='ft')units='ft';}catch{}
+const fmtLen=m=>units==='ft'?(m*3.281).toFixed(1)+' ft':Math.round(m*100)+' cm';
+const fmt=m=>m==null?'–':fmtLen(m);
 function surf(m){if(m==null)return'';const f=m*3.281;return f<1.5?'ankle–knee':f<2.5?'knee–thigh':f<3.5?'waist high':f<4.5?'chest high':f<5.5?'shoulder high':f<7?'head high':'overhead';}
+function showH(){$('hv').textContent=fmtLen(phoneH());}
+function setUnits(u){units=u;try{localStorage.setItem('units',u);}catch{}
+  $('uCm').setAttribute('aria-pressed',u==='cm');$('uFt').setAttribute('aria-pressed',u==='ft');showH();stats();}
+function recompute(){waves.forEach(w=>w.m=height(w));stats();}
 function status(){const s=$('hzs');
-  if(manual){s.className='ok';s.textContent='Horizon: set by hand';}
+  if(manual){s.className=hzConf?'ok':'bad';s.textContent=hzConf?'Horizon: following your line':'Horizon: lost — set it again';}
   else if(hz&&hzConf){s.className='ok';s.textContent='Horizon: locked';}
   else{s.className='bad';s.textContent=hz?'Horizon: weak — hold steady':'Horizon: searching…';}
   const h=$('hint');h.hidden=false;
   h.textContent=setting?(tp.length?'Tap the horizon on the right':'Tap the horizon on the left'):
     !hz?'Point at the sea with the horizon in view':tp.length?'Tap the crest':auto?'Watching for breaking waves':'Tap the trough of a breaking wave';
-  const as=$('as');as.textContent=!auto?'Auto: off':!hz?'Auto: needs horizon':ev?'Auto: wave breaking…':performance.now()-flashT<2000?'Auto: wave logged':'Auto: watching';as.style.color=ev||performance.now()-flashT<2000?'var(--wave)':'';}
+  const now=performance.now(),as=$('as');
+  as.textContent=!auto?'Auto: off':!hz?'Auto: needs horizon':ev?'Auto: wave breaking…':now-flashT<2000?'Auto: wave logged':'Auto: watching';
+  as.style.color=ev||now-flashT<2000?'var(--wave)':'';
+  const u=$('undo');u.hidden=!tp.length&&!waves.length;u.textContent=tp.length?'Cancel tap':'Remove last wave';}
 function stats(){const ms=waves.map(w=>w.m).filter(v=>v!=null);$('n').textContent=ms.length;
   const avg=ms.length?ms.reduce((a,b)=>a+b)/ms.length:null,t=[...ms].sort((a,b)=>b-a),n=Math.max(1,Math.ceil(t.length/3)),big=ms.length?t.slice(0,n).reduce((a,b)=>a+b)/n:null;
   $('avg').textContent=fmt(avg);$('max').textContent=fmt(big);
-  const last=ms.length?ms[ms.length-1]:null;$('live').hidden=last==null;$('lv').textContent=fmt(last);$('ls').textContent=surf(last);}
+  const last=ms.length?ms[ms.length-1]:null;$('live').hidden=last==null;$('lv').textContent=fmt(last);$('ls').textContent=surf(last);
+  status();}
 
 function draw(){
   cx.clearRect(0,0,cv.width,cv.height);const dpr=devicePixelRatio,b=box();
@@ -211,29 +330,76 @@ function draw(){
     if(p.length===2){const[a,c2]=[toPx(p[0]),toPx(p[1])];cx.beginPath();cx.moveTo(...a);cx.lineTo(...c2);cx.stroke();}};
   waves.slice(-3).forEach(w=>seg(w.p,'rgba(60,195,207,.55)'));
   if(!setting)seg(tp,'#3cc3cf');else seg(tp,'#f0a24a');
-  if(live&&!frozen){cx.setLineDash([6*dpr,4*dpr]);seg([{x:live.x,y:live.y1},{x:live.x,y:live.y0}],'#ffffff');cx.setLineDash([]);}
+  if(live&&!frozen){cx.setLineDash([6*dpr,4*dpr]);seg(live,'#ffffff');cx.setLineDash([]);}
   requestAnimationFrame(draw);
 }
 cv.addEventListener('pointerdown',e=>{if(!stream)return;const p=toN(e);
-  if(setting){tp.push(p);if(tp.length===2){hz=tp[0].x<tp[1].x?tp:[tp[1],tp[0]];tp=[];setting=false;manual=true;$('setHz').setAttribute('aria-pressed','false');$('setHz').textContent='Auto horizon';}}
-  else{if(!hz)return;tp.push(p);if(tp.length===2){
-      // keep the horizon this wave was measured against
-      const w={p:tp,hz:hz.map(q=>({...q})),m:null};tp=[];
+  if(setting){tp.push(p);if(tp.length===2){hz=tp[0].x<tp[1].x?tp:[tp[1],tp[0]];hzFrame=hzTrack=hz;trackMiss=0;hzConf=1;tp=[];setting=false;manual=true;$('setHz').setAttribute('aria-pressed','false');$('setHz').textContent='Auto horizon';}}
+  else{const L=frozen?(hzFrame||hz):hz;if(!L)return;tp.push(p);if(tp.length===2){
+      const w={p:tp,hz:L.map(q=>({...q})),m:null};tp=[];
       w.m=height(w);waves.push(w);if(frozen)toggleFreeze();}}
   status();stats();});
 function toggleFreeze(){frozen=!frozen;frozen?vid.pause():vid.play();$('freeze').textContent=frozen?'Resume':'Freeze';}
 $('freeze').onclick=toggleFreeze;
 $('auto').onclick=()=>{auto=!auto;$('auto').setAttribute('aria-pressed',auto);bg=null;ev=null;live=null;status();};
-$('setHz').onclick=()=>{if(manual&&!setting){manual=false;hz=null;$('setHz').textContent='Set horizon';status();return;}
+$('setHz').onclick=()=>{if(manual&&!setting){manual=false;hz=null;hzFrame=null;hzTrack=null;$('setHz').textContent='Set horizon';status();return;}
   setting=!setting;tp=[];$('setHz').setAttribute('aria-pressed',setting);status();};
-$('undo').onclick=()=>{if(tp.length)tp.pop();else waves.pop();status();stats();};
-$('h').oninput=()=>{waves.forEach(w=>w.m=height(w));showH();stats();};
-showH();
+$('undo').onclick=()=>{if(tp.length)tp.pop();else waves.pop();stats();};
+$('h').oninput=()=>{hMeasured=null;$('arMsg').hidden=true;showH();recompute();};
+$('lens').oninput=recompute;
+$('uCm').onclick=()=>setUnits('cm');$('uFt').onclick=()=>setUnits('ft');
+setUnits(units);
+async function startCamera(){
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920}},audio:false});
+  vid.srcObject=stream;await vid.play();bg=null;prevC=null;ev=null;
+}
+function stopCamera(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;}
 $('go').onclick=async()=>{
-  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920}},audio:false});
-    vid.srcObject=stream;await vid.play();$('start').hidden=true;fit();status();stats();draw();setInterval(detect,120);
+  try{await startCamera();$('start').hidden=true;fit();stats();draw();setInterval(detect,150);
     try{await navigator.wakeLock?.request('screen');}catch{}
   }catch(err){$('err').textContent='Camera unavailable: '+err.message+'. Open the page over https in Safari or Chrome and allow camera access.';}
+};
+
+// ===== Optional: measure phone height with AR (WebXR hit-test on the sand plane) =====
+// Only offered where the browser supports immersive AR (Android Chrome with ARCore); otherwise the slider is used.
+(async()=>{try{$('arBtn').hidden=!(navigator.xr&&await navigator.xr.isSessionSupported('immersive-ar'));}catch{}})();
+$('arBtn').onclick=async()=>{
+  const msg=t=>{$('arMsg').textContent=t;$('arMsg').hidden=false;};
+  stopCamera();                                   // ARCore needs the camera to itself
+  let session;
+  try{session=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['hit-test'],optionalFeatures:['dom-overlay'],domOverlay:{root:$('arOverlay')}});}
+  catch(e){msg('AR could not start ('+e.message+'). Set the height with the slider.');try{await startCamera();}catch{}return;}
+  $('arOverlay').hidden=false;$('arVal').textContent='–';
+  const gl=document.createElement('canvas').getContext('webgl',{xrCompatible:true});
+  session.updateRenderState({baseLayer:new XRWebGLLayer(session,gl)});
+  const local=await session.requestReferenceSpace('local'),viewer=await session.requestReferenceSpace('viewer');
+  let src;try{src=await session.requestHitTestSource({space:viewer,entityTypes:['plane']});}catch{src=await session.requestHitTestSource({space:viewer});}
+  const samples=[],t0=performance.now();let result=null,ended=false;
+  const finish=r=>{if(ended)return;result=r;ended=true;try{src.cancel();}catch{}session.end().catch(()=>{});};
+  $('arCancel').onclick=()=>finish(null);
+  session.addEventListener('end',async()=>{
+    ended=true;$('arOverlay').hidden=true;
+    if(result!=null){hMeasured=result;$('h').value=Math.min(2,Math.max(0.05,result));
+      msg(`Measured ${fmtLen(result)} above the sand. Keep the phone at this height. If you're not on wet sand at the water's edge, add how far the sand is above the water with the slider.`);
+      showH();recompute();}
+    else if(performance.now()-t0>20000)msg('No steady reading from the sand. Set the height with the slider.');
+    try{await startCamera();}catch(e){msg('Camera did not restart: '+e.message);}
+  });
+  const onFrame=(t,frame)=>{
+    if(ended)return;session.requestAnimationFrame(onFrame);
+    const layer=session.renderState.baseLayer;if(gl&&layer){gl.bindFramebuffer(gl.FRAMEBUFFER,layer.framebuffer);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);}
+    if(performance.now()-t0>20000){finish(null);return;}
+    const pose=frame.getViewerPose(local),hits=frame.getHitTestResults(src);
+    if(!pose||!hits.length){$('arTxt').textContent='Point the phone at the sand in front of your feet';return;}
+    const hp=hits[0].getPose(local);if(!hp)return;
+    const q=hp.transform.orientation;
+    if(1-2*(q.x*q.x+q.z*q.z)<0.95){$('arTxt').textContent='That surface is not level. Aim at flat sand';return;}  // plane normal must point up
+    samples.push(pose.transform.position.y-hp.transform.position.y);if(samples.length>30)samples.shift();
+    const srt=[...samples].sort((a,b)=>a-b),med=srt[srt.length>>1];
+    $('arVal').textContent=fmtLen(med);$('arTxt').textContent='Hold still…';
+    if(samples.length===30&&srt[27]-srt[2]<0.02)finish(med);   // 30 frames agreeing within 2 cm
+  };
+  session.requestAnimationFrame(onFrame);
 };
 addEventListener('resize',fit);
 </script>

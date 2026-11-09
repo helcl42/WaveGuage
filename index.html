@@ -79,7 +79,7 @@ input{width:4.5em;font:inherit;padding:6px;border-radius:8px;border:1px solid va
         <input id="h" type="range" min="0.05" max="3" step="0.05" value="1.2" style="flex:1;width:auto;min-width:0;padding:0">
         <b id="hv" style="font-variant-numeric:tabular-nums;min-width:4.5em;text-align:right">120 cm</b></label>
       <button id="calBtn">Calibrate</button>
-      <button id="arBtn" hidden>Measure</button>
+      <button id="arBtn">Measure</button>
     </div>
     <div class="muted" id="arMsg" hidden></div>
     <div class="row">
@@ -491,7 +491,7 @@ function onMotion(e){
     else{zNet+=m.z;D.zNet=zNet;if(hSetAt!=null&&Math.abs(zNet)>HREM.dz)remind('drift');}}
 }
 addEventListener('devicemotion',onMotion);
-function remText(){const ar=!$('arBtn').hidden;
+function remText(){const ar=arSupported;
   return remKind==='notset'?`Readings assume your phone is ${fmtLen(phoneH())} above the water. Set your real height first: ${ar?'Measure aims at the water’s edge':'Calibrate uses a person of known height'}, or use the slider.`:
     remKind==='time'?'20 minutes since you set the height. The tide may have moved the water level.':
     remKind==='moved'?'You moved around. If you’re at a new spot or holding the phone differently, re-measure.':
@@ -520,7 +520,7 @@ function status(){const s=$('hzs');
   const u=$('undo');u.hidden=!tp.length&&!waves.length;u.textContent=tp.length?'Cancel tap':'Remove last wave';
   if(hSetAt!=null&&now-hSetAt>HREM.time&&now>hSnoozeUntil&&!remKind)remKind='time';
   const hr=$('hRem');hr.hidden=!remKind||!!review||!!calib||!stream;
-  if(!hr.hidden){$('hrTxt').textContent=remText();$('hrGo').textContent=remKind==='notset'?($('arBtn').hidden?'Calibrate':'Measure'):'Re-measure';
+  if(!hr.hidden){$('hrTxt').textContent=remText();$('hrGo').textContent=remKind==='notset'?(arSupported?'Measure':'Calibrate'):'Re-measure';
     $('hrLater').textContent=remKind==='drift'?'It’s fine':remKind==='moved'?'Same height':remKind==='notset'?'Not now':'Later';}}
 function stats(){const ms=waves.map(w=>w.m).filter(v=>v!=null);$('n').textContent=ms.length;
   const avg=ms.length?ms.reduce((a,b)=>a+b)/ms.length:null,t=[...ms].sort((a,b)=>b-a),n=Math.max(1,Math.ceil(t.length/3)),big=ms.length?t.slice(0,n).reduce((a,b)=>a+b)/n:null;
@@ -614,7 +614,7 @@ $('rvSave').onclick=()=>{if(!review)return;const v=review.cur,w={p:v.p,hz:v.hz,m
 $('rvPrev').onclick=()=>{if(review&&review.vi>0)showView(review.vi-1);};$('rvNext').onclick=()=>{if(review&&review.vi<review.views.length-1)showView(review.vi+1);};
 $('rvSkip').onclick=()=>{if(!review)return;D.ign=(D.ign||0)+1;nextReview();};
 $('calBtn').onclick=startCalib;
-$('hrLater').onclick=remDismiss;$('hrGo').onclick=()=>{remKind=null;status();if(!$('arBtn').hidden)$('arBtn').click();else startCalib();};$('cbCancel').onclick=endCalib;$('cbH').oninput=()=>{if(calib&&calib.pts.length===2)calibPreview();};
+$('hrLater').onclick=remDismiss;$('hrGo').onclick=()=>{remKind=null;status();if(arSupported)$('arBtn').click();else startCalib();};$('cbCancel').onclick=endCalib;$('cbH').oninput=()=>{if(calib&&calib.pts.length===2)calibPreview();};
 $('cbApply').onclick=()=>{const ref=refMeters(),h=calib&&calib.pts.length===2?solveH(calib.pts,calib.hz,ref):null;if(!h)return;
   hMeasured=h;$('h').value=Math.min(3,Math.max(0.05,h));
   $('arMsg').textContent=`Calibrated from a ${fmtLen(ref)} person: phone ${fmtLen(h)} above the water. Every 10 cm their real height differs moves this by about ${fmtLen(h*0.1/ref)}.`;
@@ -673,9 +673,14 @@ function makeArRenderer(gl){
   };
 }
 // Only offered where the browser supports immersive AR (Android Chrome with ARCore); otherwise the slider is used.
-(async()=>{try{$('arBtn').hidden=!(navigator.xr&&await navigator.xr.isSessionSupported('immersive-ar'));}catch{}})();
+// Always shown; where AR isn't available, tapping it says why instead of the button silently missing.
+let arSupported=false;
+(async()=>{try{arSupported=!!(navigator.xr&&await navigator.xr.isSessionSupported('immersive-ar'));}catch{}
+  $('arBtn').style.opacity=arSupported?'':'0.55';$('arBtn').title=arSupported?'Measure phone height with AR':'AR not available in this browser';})();
 $('arBtn').onclick=async()=>{
   const msg=t=>{$('arMsg').textContent=t;$('arMsg').hidden=false;};
+  if(!arSupported){msg(window.isSecureContext===false?'AR measuring needs the page opened over https.':
+    'AR measuring isn’t available in this browser. It needs Chrome on an Android phone with Google Play Services for AR installed (free in the Play Store). Use Calibrate or the slider instead.');return;}
   stopCamera();                                   // ARCore needs the camera to itself
   let session;
   try{session=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['hit-test'],optionalFeatures:['dom-overlay'],domOverlay:{root:$('arOverlay')}});}

@@ -61,6 +61,10 @@ input{width:4.5em;font:inherit;padding:6px;border-radius:8px;border:1px solid va
       <div class="row" id="rvViews" hidden style="flex-wrap:nowrap"><button id="rvPrev">◀ Earlier</button><span id="rvIdx" class="muted" style="flex:1;text-align:center"></span><button id="rvNext">Later ▶</button></div>
       <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="val" id="rvVal">–</span><span class="row" style="flex-wrap:nowrap"><button id="rvSkip">Skip</button><button class="primary" id="rvSave">Save</button></span></div>
     </div>
+    <div id="hRem" class="sheet" hidden>
+      <div id="hrTxt"></div>
+      <div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button id="hrLater">Later</button><button class="primary" id="hrGo">Re-measure</button></div>
+    </div>
     <div id="calib" class="sheet" hidden>
       <div id="cbTxt">Tap the feet of a person standing at the water's edge</div>
       <div class="row" style="justify-content:space-between">
@@ -465,6 +469,35 @@ function startCalib(){
 }
 function endCalib(){calib=null;$('calib').hidden=true;bg=null;prevL2=null;prevC=null;ev=null;status();}
 function nearest(pts,p){let bi=0,bd=1e9;pts.forEach((q,i)=>{const dd=Math.hypot((q.x-p.x)*cv.width,(q.y-p.y)*cv.height);if(dd<bd){bd=dd;bi=i;}});return bi;}
+// ===== Height reminder =====
+// Every reading scales with phone height, so the page asks to re-measure when it has probably changed:
+// not set yet, the phone was raised or lowered by more than 20 cm, you walked, or 20 minutes passed (tide).
+// Vertical moves are estimated from the accelerometer: integrate upward acceleration during a short move,
+// assume the phone is at rest again when the move ends (zero-velocity reset), add up the net change.
+const HREM={time:20*60e3,snooze:15*60e3,dz:0.20};
+let hSetAt=null,hSnoozeUntil=0,zNet=0,mv=null,up=null,remKind=null,remDismissed={};
+function hSet(){hSetAt=performance.now();zNet=0;mv=null;remKind=null;remDismissed={};status();}
+function remind(kind){if(remDismissed[kind]||review||calib)return;
+  const rank={notset:0,time:1,moved:2,drift:2};if(remKind&&rank[remKind]>rank[kind])return;remKind=kind;status();}
+function onMotion(e){
+  const g=e.accelerationIncludingGravity,a=e.acceleration;if(!g||g.x==null||!a||a.x==null)return;   // needs gravity-free acceleration
+  const dt=Math.min(0.1,Math.max(0.001,(e.interval||16)/1000));
+  if(!up)up={x:g.x,y:g.y,z:g.z};else{const k=Math.min(1,dt*1.5);up.x+=k*(g.x-up.x);up.y+=k*(g.y-up.y);up.z+=k*(g.z-up.z);}
+  const un=Math.hypot(up.x,up.y,up.z)||9.81,av=(a.x*up.x+a.y*up.y+a.z*up.z)/un;   // upward linear acceleration (m/s²)
+  if(!mv){if(Math.abs(av)>0.6)mv={t:0,v:av*dt,z:0,quiet:0};return;}
+  mv.t+=dt;mv.v+=av*dt;mv.z+=mv.v*dt;mv.quiet=Math.abs(av)<0.3?mv.quiet+dt:0;
+  if(mv.quiet>=0.3||mv.t>4){const m=mv;mv=null;
+    if(m.t>2){if(hSetAt!=null)remind('moved');}          // long, sustained motion: walking or moving around
+    else{zNet+=m.z;D.zNet=zNet;if(hSetAt!=null&&Math.abs(zNet)>HREM.dz)remind('drift');}}
+}
+addEventListener('devicemotion',onMotion);
+function remText(){const ar=!$('arBtn').hidden;
+  return remKind==='notset'?`Readings assume your phone is ${fmtLen(phoneH())} above the water. Set your real height first: ${ar?'Measure aims at the water’s edge':'Calibrate uses a person of known height'}, or use the slider.`:
+    remKind==='time'?'20 minutes since you set the height. The tide may have moved the water level.':
+    remKind==='moved'?'You moved around. If you’re at a new spot or holding the phone differently, re-measure.':
+    remKind==='drift'?`The phone seems about ${fmtLen(Math.abs(zNet))} ${zNet>0?'higher':'lower'} than when you set the height. Hold it back there, or re-measure.`:'';}
+function remDismiss(){if(remKind==='time')hSnoozeUntil=performance.now()+HREM.snooze;else if(remKind==='drift'||remKind==='moved')zNet=0;
+  if(remKind==='notset')remDismissed.notset=true;remKind=null;status();}
 // ===== UI =====
 let units='cm';try{if(localStorage.getItem('units')==='ft')units='ft';}catch{}
 const fmtLen=m=>units==='ft'?(m*3.281).toFixed(1)+' ft':Math.round(m*100)+' cm';
@@ -484,7 +517,11 @@ function status(){const s=$('hzs');
   const now=performance.now(),as=$('as');
   as.textContent=review?'Auto: waiting for your check':calib?'Auto: paused':!auto?'Auto: off':!hz?'Auto: needs horizon':D.moving?'Auto: paused, camera moving':ev?'Auto: wave breaking…':now-flashT<2000?'Auto: wave logged':'Auto: watching';
   as.style.color=ev||now-flashT<2000?'var(--wave)':'';
-  const u=$('undo');u.hidden=!tp.length&&!waves.length;u.textContent=tp.length?'Cancel tap':'Remove last wave';}
+  const u=$('undo');u.hidden=!tp.length&&!waves.length;u.textContent=tp.length?'Cancel tap':'Remove last wave';
+  if(hSetAt!=null&&now-hSetAt>HREM.time&&now>hSnoozeUntil&&!remKind)remKind='time';
+  const hr=$('hRem');hr.hidden=!remKind||!!review||!!calib||!stream;
+  if(!hr.hidden){$('hrTxt').textContent=remText();$('hrGo').textContent=remKind==='notset'?($('arBtn').hidden?'Calibrate':'Measure'):'Re-measure';
+    $('hrLater').textContent=remKind==='drift'?'It’s fine':remKind==='moved'?'Same height':remKind==='notset'?'Not now':'Later';}}
 function stats(){const ms=waves.map(w=>w.m).filter(v=>v!=null);$('n').textContent=ms.length;
   const avg=ms.length?ms.reduce((a,b)=>a+b)/ms.length:null,t=[...ms].sort((a,b)=>b-a),n=Math.max(1,Math.ceil(t.length/3)),big=ms.length?t.slice(0,n).reduce((a,b)=>a+b)/n:null;
   $('avg').textContent=fmt(avg);$('max').textContent=fmt(big);
@@ -554,7 +591,7 @@ function drawDebug(b,dpr){
     `roll ${roll.toFixed(1)}°  pitch ${pitch.toFixed(1)}° down`,
     `motion ${sg(D.dx|0)},${sg(D.dy|0)} px ${D.track===false?'(lost)':''} roll ${sg(+(D.dRoll||0).toFixed(1))}°${D.gyro?' gyro!':''}  ${(D.rate||0).toFixed(1)} Hz`,
     `white >${D.thr|0}  ${D.state||'-'}`,
-    `ignored so far ${D.ign||0}`,
+    `ignored so far ${D.ign||0}  phone moved ${sg(Math.round((D.zNet||0)*100))} cm`,
     `proc ${(D.ms||0).toFixed(1)} ms  h ${h.toFixed(2)} m${hMeasured!=null?' AR':''}`];
   const pad=6*dpr,lh=15*dpr,wd=Math.max(...lines.map(l=>cx.measureText(l).width))+pad*2,ht=lines.length*lh+pad*2,x0=b.x+8*dpr,y0=b.y+b.h-ht-8*dpr;
   cx.fillStyle='rgba(0,0,0,.62)';cx.fillRect(x0,y0,wd,ht);cx.fillStyle='#e3f0f2';lines.forEach((l,i)=>cx.fillText(l,x0+pad,y0+pad+lh*(i+.5)));
@@ -576,11 +613,12 @@ const endDrag=()=>{drag=null;};cv.addEventListener('pointerup',endDrag);cv.addEv
 $('rvSave').onclick=()=>{if(!review)return;const v=review.cur,w={p:v.p,hz:v.hz,m:null,auto:true,confirmed:true};w.m=height(w);if(w.m!=null){waves.push(w);flashT=performance.now();stats();}nextReview();};
 $('rvPrev').onclick=()=>{if(review&&review.vi>0)showView(review.vi-1);};$('rvNext').onclick=()=>{if(review&&review.vi<review.views.length-1)showView(review.vi+1);};
 $('rvSkip').onclick=()=>{if(!review)return;D.ign=(D.ign||0)+1;nextReview();};
-$('calBtn').onclick=startCalib;$('cbCancel').onclick=endCalib;$('cbH').oninput=()=>{if(calib&&calib.pts.length===2)calibPreview();};
+$('calBtn').onclick=startCalib;
+$('hrLater').onclick=remDismiss;$('hrGo').onclick=()=>{remKind=null;status();if(!$('arBtn').hidden)$('arBtn').click();else startCalib();};$('cbCancel').onclick=endCalib;$('cbH').oninput=()=>{if(calib&&calib.pts.length===2)calibPreview();};
 $('cbApply').onclick=()=>{const ref=refMeters(),h=calib&&calib.pts.length===2?solveH(calib.pts,calib.hz,ref):null;if(!h)return;
   hMeasured=h;$('h').value=Math.min(3,Math.max(0.05,h));
   $('arMsg').textContent=`Calibrated from a ${fmtLen(ref)} person: phone ${fmtLen(h)} above the water. Every 10 cm their real height differs moves this by about ${fmtLen(h*0.1/ref)}.`;
-  $('arMsg').hidden=false;endCalib();showH();recompute();};
+  $('arMsg').hidden=false;endCalib();showH();recompute();hSet();};
 $('cfmBtn').onclick=()=>{confirmOn=!confirmOn;try{localStorage.setItem('confirm',confirmOn?'1':'0');}catch{}$('cfmBtn').setAttribute('aria-pressed',confirmOn);};
 $('cfmBtn').setAttribute('aria-pressed',confirmOn);
 function toggleFreeze(){frozen=!frozen;frozen?vid.pause():vid.play();$('freeze').textContent=frozen?'Resume':'Freeze';}
@@ -589,7 +627,7 @@ $('auto').onclick=()=>{auto=!auto;$('auto').setAttribute('aria-pressed',auto);bg
 $('setHz').onclick=()=>{if(manual&&!setting){manual=false;hz=null;hzFrame=null;hzTrack=null;$('setHz').textContent='Set horizon';status();return;}
   setting=!setting;tp=[];$('setHz').setAttribute('aria-pressed',setting);status();};
 $('undo').onclick=()=>{if(tp.length)tp.pop();else waves.pop();stats();};
-$('h').oninput=()=>{hMeasured=null;$('arMsg').hidden=true;showH();recompute();};
+$('h').oninput=()=>{hMeasured=null;$('arMsg').hidden=true;showH();recompute();hSet();};
 $('lens').oninput=recompute;
 function setDebug(on){dbg=on;try{localStorage.setItem('debug',on?'1':'0');}catch{}$('dbgBtn').setAttribute('aria-pressed',on);if(!on)D.maskOn=false;}
 $('dbgBtn').onclick=()=>setDebug(!dbg);setDebug(dbg);
@@ -603,6 +641,7 @@ function stopCamera(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=n
 $('go').onclick=async()=>{
   try{if(window.DeviceMotionEvent&&typeof DeviceMotionEvent.requestPermission==='function')DeviceMotionEvent.requestPermission().catch(()=>{});
     await startCamera();$('start').hidden=true;fit();stats();draw();setInterval(detect,150);
+    setTimeout(()=>{if(hSetAt==null)remind('notset');},1500);
     try{await navigator.wakeLock?.request('screen');}catch{}
   }catch(err){$('err').textContent='Camera unavailable: '+err.message+'. Open the page over https in Safari or Chrome and allow camera access.';}
 };
@@ -651,7 +690,7 @@ $('arBtn').onclick=async()=>{
   $('arCancel').onclick=()=>finish(null);
   session.addEventListener('end',async()=>{
     ended=true;$('arOverlay').hidden=true;
-    if(result!=null){hMeasured=result;$('h').value=Math.min(2,Math.max(0.05,result));
+    if(result!=null){hMeasured=result;$('h').value=Math.min(3,Math.max(0.05,result));hSet();
       msg(`Phone is ${fmtLen(result)} above the spot you aimed at. If that was the water's edge, this is your height above the water. Keep the phone at this height.`);
       showH();recompute();}
     else if(performance.now()-t0>20000)msg('No steady reading from the sand. Set the height with the slider.');

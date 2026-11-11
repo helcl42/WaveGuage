@@ -314,20 +314,36 @@ function toMetres(value, units) {
 
 /** Surfers' words for a wave face height. */
 function surfLabel(metres) {
-  if (metres == null) return '';
+  if (metres == null) {
+    return '';
+  }
   const feet = metres * FEET_PER_METRE;
-  if (feet < 1.5) return 'ankle–knee';
-  if (feet < 2.5) return 'knee–thigh';
-  if (feet < 3.5) return 'waist high';
-  if (feet < 4.5) return 'chest high';
-  if (feet < 5.5) return 'shoulder high';
-  if (feet < 7) return 'head high';
+  if (feet < 1.5) {
+    return 'ankle–knee';
+  }
+  if (feet < 2.5) {
+    return 'knee–thigh';
+  }
+  if (feet < 3.5) {
+    return 'waist high';
+  }
+  if (feet < 4.5) {
+    return 'chest high';
+  }
+  if (feet < 5.5) {
+    return 'shoulder high';
+  }
+  if (feet < 7) {
+    return 'head high';
+  }
   return 'overhead';
 }
 
 /** Count, average, mean of the biggest third (how surfers size a session) and the latest height. */
 function summarize(heights) {
-  if (!heights.length) return { count: 0, average: null, biggestThird: null, latest: null };
+  if (!heights.length) {
+    return { count: 0, average: null, biggestThird: null, latest: null };
+  }
   const largestFirst = [...heights].sort((a, b) => b - a);
   const biggestThird = largestFirst.slice(0, Math.max(1, Math.ceil(heights.length / 3)));
   return {
@@ -463,7 +479,9 @@ class View {
     const line = cross(a, b);
     let normal = [this.focal * line[0], this.focal * line[1], line[2]];
     const below = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 + 50, this.focal];   // a ray clearly below the horizon
-    if (dot(normal, below) < 0) normal = normal.map(v => -v);                 // make the normal point "down"
+    if (dot(normal, below) < 0) {  // make the normal point "down"
+      normal = normal.map(v => -v);
+    }
     const ray = this.ray(p);
     return Math.asin(dot(normal, ray) / (norm(normal) * norm(ray))) + this.dip;
   }
@@ -476,11 +494,17 @@ class View {
    */
   measureWave(trough, crest, horizon) {
     const troughAngle = this.depression(trough, horizon);
-    if (troughAngle <= MIN_DEPRESSION) return null;                 // trough on or above the horizon
+    if (troughAngle <= MIN_DEPRESSION) {  // trough on or above the horizon
+      return null;
+    }
     const r = 1 - Math.tan(this.depression(crest, horizon)) / Math.tan(troughAngle);
-    if (r <= 0) return { height: 0, distance: null };              // crest drawn below the trough
+    if (r <= 0) {  // crest drawn below the trough
+      return { height: 0, distance: null };
+    }
     const denominator = 1 - TROUGH_DEPTH * r;
-    if (denominator <= 0.2) return null;                           // crest far above eye level: ill-conditioned
+    if (denominator <= 0.2) {  // crest far above eye level: ill-conditioned
+      return null;
+    }
     const height = this.phoneHeight * r / denominator;
     const distance = (this.phoneHeight + TROUGH_DEPTH * height) / Math.tan(troughAngle);
     return { height, distance };
@@ -500,15 +524,23 @@ class View {
   /** Points along the water at `distance` metres, at x = 0, 1/8, … 1 (fewer where off-screen). */
   pointsAtDistance(distance, horizon) {
     const target = Math.atan(this.phoneHeight / distance);
-    if (target <= this.dip) return [];
+    if (target <= this.dip) {
+      return [];
+    }
     const points = [];
     for (let i = 0; i <= 8; i++) {
       const x = i / 8;
       let above = horizonY(horizon, x), below = 1;
-      if (this.depression({ x, y: below }, horizon) < target) continue;   // that distance is below the frame here
+      if (this.depression({ x, y: below }, horizon) < target) {  // that distance is below the frame here
+        continue;
+      }
       for (let step = 0; step < 22; step++) {
         const y = (above + below) / 2;
-        if (this.depression({ x, y }, horizon) < target) above = y; else below = y;
+        if (this.depression({ x, y }, horizon) < target) {
+          above = y;
+        } else {
+          below = y;
+        }
       }
       points.push({ x, y: below });
     }
@@ -543,9 +575,13 @@ function phoneHeightFromPerson(view, feet, head, horizon, personHeight) {
   for (let i = 0; i < 5; i++) {
     const v = view.atHeight(h);
     const feetAngle = v.depression(feet, horizon);
-    if (feetAngle <= MIN_DEPRESSION) return null;
+    if (feetAngle <= MIN_DEPRESSION) {
+      return null;
+    }
     const ratio = 1 - Math.tan(v.depression(head, horizon)) / Math.tan(feetAngle);
-    if (ratio <= 0.02) return null;
+    if (ratio <= 0.02) {
+      return null;
+    }
     h = personHeight / ratio;
   }
   return h;
@@ -593,12 +629,18 @@ function findCoarseHorizon(image) {
     const x0 = Math.round(image.width * (0.05 + i * 0.18));
     const x1 = Math.round(image.width * (0.05 + i * 0.18 + 0.14));
     const edge = topmostEdge(image, x0, x1);
-    if (edge) edges.push(edge);
+    if (edge) {
+      edges.push(edge);
+    }
   }
-  if (edges.length < 3) return null;
+  if (edges.length < 3) {
+    return null;
+  }
   const middle = median(edges.map(e => e.y));
   const agreeing = edges.filter(e => Math.abs(e.y - middle) < 0.04);
-  if (agreeing.length < 3) return null;
+  if (agreeing.length < 3) {
+    return null;
+  }
   return { line: fitLine(agreeing), strength: Math.min(...agreeing.map(e => e.strength)) };
 }
 
@@ -612,10 +654,16 @@ function topmostEdge(image, x0, x1) {
     edge[y] = Math.abs((rows[y - 3] + rows[y - 2] + rows[y - 1]) - (rows[y] + rows[y + 1] + rows[y + 2])) / 3;
     strongest = Math.max(strongest, edge[y]);
   }
-  if (strongest < 6) return null;
+  if (strongest < 6) {
+    return null;
+  }
   let y = 3;
-  while (y < limit && edge[y] < strongest * 0.5) y++;
-  while (y + 1 < limit && edge[y + 1] >= edge[y]) y++;     // climb to that edge's peak
+  while (y < limit && edge[y] < strongest * 0.5) {
+    y++;
+  }
+  while (y + 1 < limit && edge[y + 1] >= edge[y]) {  // climb to that edge's peak
+    y++;
+  }
   return { x: (x0 + x1) / 2 / image.width, y: (y - 0.5) / image.height, strength: edge[y] };
 }
 
@@ -623,7 +671,9 @@ function averageRows(image, x0, x1) {
   const rows = new Float32Array(image.height);
   for (let y = 0; y < image.height; y++) {
     let sum = 0;
-    for (let x = x0; x < x1; x++) sum += skySeaBrightness(image.data, (y * image.width + x) * 4);
+    for (let x = x0; x < x1; x++) {
+      sum += skySeaBrightness(image.data, (y * image.width + x) * 4);
+    }
     rows[y] = sum / (x1 - x0);
   }
   return rows;
@@ -642,10 +692,14 @@ function refineHorizon(source, line, bandFraction) {
   const strips = [];
   for (let i = 0; i < 7; i++) {
     const candidates = stripCandidates(source, size, line, i, band);
-    if (candidates.length) strips.push(candidates);
+    if (candidates.length) {
+      strips.push(candidates);
+    }
   }
   const candidates = strips.flat();
-  if (strips.length < 3) return { line: null, candidates, used: [] };
+  if (strips.length < 3) {
+    return { line: null, candidates, used: [] };
+  }
   const used = mostAgreedLine(strips, size.height);
   return { line: used.length >= 3 ? fitLine(used) : null, candidates, used };
 }
@@ -658,7 +712,9 @@ function stripCandidates(source, size, line, i, band) {
   const height = Math.min(size.height, centreY + band) - y0;
   const width = Math.max(4, Math.round(size.width * 0.06));
   const x0 = Math.max(0, Math.min(size.width - width, Math.round(xn * size.width - width / 2)));
-  if (height < 10) return [];
+  if (height < 10) {
+    return [];
+  }
 
   const samples = 16;
   const data = readPixels(source, x0, y0, width, height, samples, height);
@@ -669,12 +725,16 @@ function stripCandidates(source, size, line, i, band) {
     edge[y] = Math.abs((rows[y + 1] + rows[y + 2]) - (rows[y - 1] + rows[y - 2])) / 2;
     strongest = Math.max(strongest, edge[y]);
   }
-  if (strongest < 4) return [];
+  if (strongest < 4) {
+    return [];
+  }
 
   const peaks = [];
   for (let y = 3; y < height - 3; y++) {
     const isPeak = edge[y] >= edge[y - 1] && edge[y] > edge[y + 1];
-    if (isPeak && edge[y] >= Math.max(4, strongest * 0.12)) peaks.push(y);
+    if (isPeak && edge[y] >= Math.max(4, strongest * 0.12)) {
+      peaks.push(y);
+    }
   }
   peaks.sort((a, b) => edge[b] - edge[a]);
   const x = (x0 + width / 2) / size.width;
@@ -719,9 +779,15 @@ function agreementWith(a, b, strips, frameHeight) {
     let closest = null, closestPx = 1.2;
     for (const p of strip) {
       const px = Math.abs(p.y - (a.y + slope * (p.x - a.x))) * frameHeight;
-      if (px < closestPx) { closestPx = px; closest = p; }
+      if (px < closestPx) {
+        closestPx = px;
+        closest = p;
+      }
     }
-    if (closest) { agreeing.push(closest); error += closestPx * closestPx; }
+    if (closest) {
+      agreeing.push(closest);
+      error += closestPx * closestPx;
+    }
   }
   return { agreeing, error };
 }
@@ -734,7 +800,10 @@ function fitLine(points) {
   const mx = points.reduce((s, p) => s + p.x, 0) / n;
   const my = points.reduce((s, p) => s + p.y, 0) / n;
   let sxy = 0, sxx = 0;
-  for (const p of points) { sxy += (p.x - mx) * (p.y - my); sxx += (p.x - mx) ** 2; }
+  for (const p of points) {
+    sxy += (p.x - mx) * (p.y - my);
+    sxx += (p.x - mx) ** 2;
+  }
   const slope = sxx ? sxy / sxx : 0;
   return [{ x: 0.1, y: my + slope * (0.1 - mx) }, { x: 0.9, y: my + slope * (0.9 - mx) }];
 }
@@ -742,7 +811,9 @@ function fitLine(points) {
 /** Horizon of a still image (a snapshot), or null. */
 function findHorizon(source) {
   const coarse = findCoarseHorizon(downscale(source));
-  if (!coarse) return null;
+  if (!coarse) {
+    return null;
+  }
   return refineHorizon(source, coarse.line, AUTO_BAND).line || coarse.line;
 }
 
@@ -762,18 +833,26 @@ class HorizonTracker {
     this.debug = { mode: 'auto', coarse: null, candidates: [], used: [] };
   }
 
-  get isPicked() { return this.picked !== null; }
+  get isPicked() {
+    return this.picked !== null;
+  }
 
   /** Drawn as found (orange) rather than weak (red). */
-  get isConfident() { return this.strength > 0 || this.isPicked; }
+  get isConfident() {
+    return this.strength > 0 || this.isPicked;
+  }
 
   /**
    * Analyses one snapshot. `image` is the downscaled frame, `source` the full-resolution one,
    * `shiftY` the camera's vertical shift since the last snapshot in analysis pixels.
    */
   update(image, source, shiftY) {
-    if (this.isPicked) this.follow(source, shiftY / image.height);
-    else this.search(image, source);
+    if (this.isPicked) {
+      this.follow(source, shiftY / image.height);
+    }
+    else {
+      this.search(image, source);
+    }
     return this.current;
   }
 
@@ -792,7 +871,9 @@ class HorizonTracker {
     if (this.isPicked) {
       return this.strength ? { text: 'Horizon: following your line', ok: true } : { text: 'Horizon: lost — set it again', ok: false };
     }
-    if (this.display && this.strength) return { text: 'Horizon: locked', ok: true };
+    if (this.display && this.strength) {
+      return { text: 'Horizon: locked', ok: true };
+    }
     return { text: this.display ? 'Horizon: weak — hold steady' : 'Horizon: searching…', ok: false };
   }
 
@@ -800,7 +881,10 @@ class HorizonTracker {
     const coarse = findCoarseHorizon(image);
     this.strength = coarse ? coarse.strength : 0;
     this.debug = { mode: 'auto', coarse: coarse && coarse.line, candidates: [], used: [] };
-    if (!coarse) { this.current = null; return; }          // keep showing the last good line
+    if (!coarse) {  // keep showing the last good line
+      this.current = null;
+      return;
+    }
     const fine = refineHorizon(source, coarse.line, AUTO_BAND);
     this.debug.candidates = fine.candidates;
     this.debug.used = fine.used;
@@ -812,7 +896,13 @@ class HorizonTracker {
     const predicted = this.picked.map(p => ({ x: p.x, y: p.y + shiftFraction }));
     const fine = refineHorizon(source, predicted, FOLLOW_BAND);
     this.debug = { mode: fine.line ? 'following' : 'predicting', coarse: null, candidates: fine.candidates, used: fine.used };
-    if (fine.line) { this.picked = fine.line; this.misses = 0; } else { this.picked = predicted; this.misses++; }
+    if (fine.line) {
+      this.picked = fine.line;
+      this.misses = 0;
+    } else {
+      this.picked = predicted;
+      this.misses++;
+    }
     this.current = this.display = this.picked;
     this.strength = this.misses < MAX_MISSES ? 1 : 0;
   }
@@ -820,7 +910,9 @@ class HorizonTracker {
   /** Averages with the previous display line unless the horizon jumped (new scene). */
   smoothed(line) {
     const previous = this.display;
-    if (!previous || Math.abs(previous[0].y - line[0].y) >= 0.05) return line;
+    if (!previous || Math.abs(previous[0].y - line[0].y) >= 0.05) {
+      return line;
+    }
     return previous.map((p, i) => ({ x: p.x, y: (p.y + line[i].y) / 2 }));
   }
 }
@@ -860,7 +952,9 @@ class CameraMotion {
 
   recordRotation(event) {
     const r = event.rotationRate;
-    if (r) this.gyroPeak = Math.max(this.gyroPeak, Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0));
+    if (r) {
+      this.gyroPeak = Math.max(this.gyroPeak, Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0));
+    }
   }
 
   /**
@@ -871,7 +965,9 @@ class CameraMotion {
     const half = halfResolution(brightness, width, height);
     const previous = this.previous;
     this.previous = half;
-    if (!previous || previous.data.length !== half.data.length) return { dx: 0, dy: 0, trusted: true };
+    if (!previous || previous.data.length !== half.data.length) {
+      return { dx: 0, dy: 0, trusted: true };
+    }
     const horizonRow = previousHorizon
       ? Math.round((previousHorizon[0].y + previousHorizon[1].y) / 2 * half.height)
       : Math.round(half.height * 0.3);
@@ -926,12 +1022,18 @@ function matchPatches(current, previous, horizonRow) {
     for (const fx of PATCH_COLUMNS) {
       const cy = Math.round(top + (current.height - PATCH - SEARCH_Y - top) * fy);
       const cx = Math.round(current.width * fx);
-      if (cy - PATCH < 0 || cy + PATCH > current.height) continue;
-      if (patchVariance(current, cx, cy) < MIN_TEXTURE) continue;
+      if (cy - PATCH < 0 || cy + PATCH > current.height) {
+        continue;
+      }
+      if (patchVariance(current, cx, cy) < MIN_TEXTURE) {
+        continue;
+      }
       shifts.push(bestPatchShift(current, previous, cx, cy));
     }
   }
-  if (shifts.length < 3) return null;                     // too little texture to tell
+  if (shifts.length < 3) {  // too little texture to tell
+    return null;
+  }
   const dx = median(shifts.map(s => s.dx)), dy = median(shifts.map(s => s.dy));
   const agree = shifts.filter(s => Math.abs(s.dx - dx) <= 2 && Math.abs(s.dy - dy) <= 2).length;
   return agree >= 3 && agree >= shifts.length * 0.6 ? { dx, dy } : null;
@@ -956,9 +1058,15 @@ function bestPatchShift(current, previous, cx, cy) {
   for (let oy = -SEARCH_Y; oy <= SEARCH_Y; oy++) {
     for (let ox = -SEARCH_X; ox <= SEARCH_X; ox++) {
       const px = cx - ox, py = cy - oy;
-      if (px - PATCH < 0 || px + PATCH > current.width || py - PATCH < 0 || py + PATCH > current.height) continue;
+      if (px - PATCH < 0 || px + PATCH > current.width || py - PATCH < 0 || py + PATCH > current.height) {
+        continue;
+      }
       const difference = patchDifference(current, previous, cx, cy, ox, oy, best);
-      if (difference < best) { best = difference; bestX = ox; bestY = oy; }
+      if (difference < best) {
+        best = difference;
+        bestX = ox;
+        bestY = oy;
+      }
     }
   }
   return best > CLEAR_MATCH * still ? { dx: 0, dy: 0 } : { dx: bestX, dy: bestY };
@@ -970,7 +1078,9 @@ function patchDifference(current, previous, cx, cy, ox, oy, limit) {
   let sum = 0;
   for (let y = -PATCH; y < PATCH && sum < limit; y++) {
     const row = (cy + y) * w + cx, previousRow = (cy - oy + y) * w + cx - ox;
-    for (let x = -PATCH; x < PATCH; x++) sum += Math.abs(current.data[row + x] - previous.data[previousRow + x]);
+    for (let x = -PATCH; x < PATCH; x++) {
+      sum += Math.abs(current.data[row + x] - previous.data[previousRow + x]);
+    }
   }
   return sum;
 }
@@ -1024,14 +1134,20 @@ class WhiteWater {
   }
 
   followCamera(dx, dy, width, height) {
-    if (!dx && !dy) return;
+    if (!dx && !dy) {
+      return;
+    }
     const shifted = new Float32Array(width * height).fill(1);   // newly visible areas count as old white: never "new"
     for (let y = 0; y < height; y++) {
       const sy = y - dy;
-      if (sy < 0 || sy >= height) continue;
+      if (sy < 0 || sy >= height) {
+        continue;
+      }
       for (let x = 0; x < width; x++) {
         const sx = x - dx;
-        if (sx >= 0 && sx < width) shifted[y * width + x] = this.background[sy * width + sx];
+        if (sx >= 0 && sx < width) {
+          shifted[y * width + x] = this.background[sy * width + sx];
+        }
       }
     }
     this.background = shifted;
@@ -1039,7 +1155,9 @@ class WhiteWater {
 
   learn(white) {
     const bg = this.background;
-    for (let j = 0; j < bg.length; j++) bg[j] = bg[j] * (1 - BACKGROUND_RATE) + white[j] * BACKGROUND_RATE;
+    for (let j = 0; j < bg.length; j++) {
+      bg[j] = bg[j] * (1 - BACKGROUND_RATE) + white[j] * BACKGROUND_RATE;
+    }
   }
 }
 
@@ -1057,7 +1175,10 @@ function rowsBelowHorizon(horizon, width, height) {
 function whiteThreshold(brightness, firstRow, width, height) {
   let sum = 0, count = 0;
   for (let x = 0; x < width; x += 2) {
-    for (let y = firstRow[x]; y < height; y += 2) { sum += brightness[y * width + x]; count++; }
+    for (let y = firstRow[x]; y < height; y += 2) {
+      sum += brightness[y * width + x];
+      count++;
+    }
   }
   const water = count ? sum / count : 120;
   return Math.min(MAX_THRESHOLD, Math.max(MIN_THRESHOLD, water + ABOVE_WATER));
@@ -1069,7 +1190,9 @@ function whiteMask(image, firstRow, threshold) {
   for (let x = 0; x < width; x++) {
     for (let y = firstRow[x]; y < height; y++) {
       const j = y * width + x;
-      if (isWhite(data, j * 4, threshold)) mask[j] = 1;
+      if (isWhite(data, j * 4, threshold)) {
+        mask[j] = 1;
+      }
     }
   }
   return mask;
@@ -1087,7 +1210,9 @@ function newWhite(white, background, width, height) {
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
       const j = y * width + x;
-      if (white[j] && neighbourhoodMax(background, j, width) < NEW_IF_BACKGROUND_BELOW) fresh[j] = 1;
+      if (white[j] && neighbourhoodMax(background, j, width) < NEW_IF_BACKGROUND_BELOW) {
+        fresh[j] = 1;
+      }
     }
   }
   return fresh;
@@ -1096,7 +1221,9 @@ function newWhite(white, background, width, height) {
 function neighbourhoodMax(values, j, width) {
   let max = 0;
   for (let oy = -width; oy <= width; oy += width) {
-    for (let ox = -1; ox <= 1; ox++) max = Math.max(max, values[j + oy + ox]);
+    for (let ox = -1; ox <= 1; ox++) {
+      max = Math.max(max, values[j + oy + ox]);
+    }
   }
   return max;
 }
@@ -1108,7 +1235,10 @@ function growsFromOldFoam(patch, background, width) {
     columns++;
     for (let r = 1; r <= 3; r++) {
       const y = patch.tops[x] - r;
-      if (y >= 0 && background[y * width + x] > 0.5) { touching++; break; }
+      if (y >= 0 && background[y * width + x] > 0.5) {
+        touching++;
+        break;
+      }
     }
   }
   return touching / columns >= 0.5;
@@ -1125,10 +1255,16 @@ class Patch {
     this.tallest = tallestColumn(tops, bottoms);
   }
 
-  get area() { return this.pixels.length; }
+  get area() {
+    return this.pixels.length;
+  }
 
   *columns() {
-    for (let x = 0; x < this.bottoms.length; x++) if (this.bottoms[x] >= 0) yield x;
+    for (let x = 0; x < this.bottoms.length; x++) {
+      if (this.bottoms[x] >= 0) {
+        yield x;
+      }
+    }
   }
 
   /** Bounding box in grid pixels: { x0, x1, y0, y1 }. */
@@ -1146,7 +1282,9 @@ function tallestColumn(tops, bottoms) {
   let best = { x: -1, top: 0, bottom: 0, extent: 0 };
   for (let x = 0; x < bottoms.length; x++) {
     const extent = bottoms[x] - tops[x] + 1;
-    if (bottoms[x] >= 0 && extent > best.extent) best = { x, top: tops[x], bottom: bottoms[x], extent };
+    if (bottoms[x] >= 0 && extent > best.extent) {
+      best = { x, top: tops[x], bottom: bottoms[x], extent };
+    }
   }
   return best;
 }
@@ -1156,11 +1294,17 @@ function largestPatch(mask, width, height) {
   const labels = new Int32Array(width * height);
   let best = null, label = 0;
   for (let start = 0; start < mask.length; start++) {
-    if (!mask[start] || labels[start]) continue;
+    if (!mask[start] || labels[start]) {
+      continue;
+    }
     const area = fill(mask, labels, start, ++label, width);
-    if (!best || area > best.area) best = { label, area };
+    if (!best || area > best.area) {
+      best = { label, area };
+    }
   }
-  if (!best) return null;
+  if (!best) {
+    return null;
+  }
   return collectPatch(labels, best, width);
 }
 
@@ -1174,7 +1318,10 @@ function fill(mask, labels, start, label, width) {
     const x = j % width;
     const neighbours = [x > 0 ? j - 1 : -1, x < width - 1 ? j + 1 : -1, j >= width ? j - width : -1, j < n - width ? j + width : -1];
     for (const k of neighbours) {
-      if (k >= 0 && mask[k] && !labels[k]) { labels[k] = label; stack.push(k); }
+      if (k >= 0 && mask[k] && !labels[k]) {
+        labels[k] = label;
+        stack.push(k);
+      }
     }
   }
   return area;
@@ -1185,11 +1332,17 @@ function collectPatch(labels, { label, area }, width) {
   const pixels = new Int32Array(area);
   let count = 0;
   for (let j = 0; j < labels.length; j++) {
-    if (labels[j] !== label) continue;
+    if (labels[j] !== label) {
+      continue;
+    }
     pixels[count++] = j;
     const x = j % width, y = (j / width) | 0;
-    if (y < tops[x]) tops[x] = y;
-    if (y > bottoms[x]) bottoms[x] = y;
+    if (y < tops[x]) {
+      tops[x] = y;
+    }
+    if (y > bottoms[x]) {
+      bottoms[x] = y;
+    }
   }
   return new Patch(pixels, tops, bottoms);
 }
@@ -1208,7 +1361,9 @@ function measureAtFullResolution(source, patch, gridWidth, gridHeight, threshold
   const y0 = Math.max(0, Math.floor((t.top - 1) / gridHeight * size.height));
   const y1 = Math.min(size.height, Math.ceil((t.bottom + 2) / gridHeight * size.height));
   const width = x1 - x0, height = y1 - y0;
-  if (width < 2 || height < 2) return null;
+  if (width < 2 || height < 2) {
+    return null;
+  }
 
   const data = readPixels(source, x0, y0, width, height);
   const white = (x, y) => isWhite(data, (y * width + x) * 4, threshold);
@@ -1217,9 +1372,13 @@ function measureAtFullResolution(source, patch, gridWidth, gridHeight, threshold
   const runs = [];
   for (let x = 0; x < width; x++) {
     const run = whiteRunThrough(white, x, middle, height, gap);
-    if (run) runs.push(run);
+    if (run) {
+      runs.push(run);
+    }
   }
-  if (!runs.length) return null;
+  if (!runs.length) {
+    return null;
+  }
 
   runs.sort((a, b) => a.extent - b.extent);
   const run = runs[Math.floor((runs.length - 1) * 0.8)];
@@ -1234,14 +1393,26 @@ function measureAtFullResolution(source, patch, gridWidth, gridHeight, threshold
 /** The white run in column x nearest the middle row, tolerating gaps of up to `gap` pixels. */
 function whiteRunThrough(white, x, middle, height, gap) {
   const seed = nearestWhite(white, x, middle, height);
-  if (seed < 0) return null;
+  if (seed < 0) {
+    return null;
+  }
   let top = seed, bottom = seed, miss = 0;
   for (let y = seed - 1; y >= 0; y--) {
-    if (white(x, y)) { top = y; miss = 0; } else if (++miss > gap) break;
+    if (white(x, y)) {
+      top = y;
+      miss = 0;
+    } else if (++miss > gap) {
+      break;
+    }
   }
   miss = 0;
   for (let y = seed + 1; y < height; y++) {
-    if (white(x, y)) { bottom = y; miss = 0; } else if (++miss > gap) break;
+    if (white(x, y)) {
+      bottom = y;
+      miss = 0;
+    } else if (++miss > gap) {
+      break;
+    }
   }
   return { x, top, bottom, extent: bottom - top + 1 };
 }
@@ -1249,9 +1420,15 @@ function whiteRunThrough(white, x, middle, height, gap) {
 function nearestWhite(white, x, middle, height) {
   for (let r = 0; r < height; r++) {
     const up = middle - r, down = middle + r;
-    if (up < 0 && down >= height) break;
-    if (up >= 0 && up < height && white(x, up)) return up;
-    if (down >= 0 && down < height && white(x, down)) return down;
+    if (up < 0 && down >= height) {
+      break;
+    }
+    if (up >= 0 && up < height && white(x, up)) {
+      return up;
+    }
+    if (down >= 0 && down < height && white(x, down)) {
+      return down;
+    }
   }
   return -1;
 }
@@ -1275,16 +1452,22 @@ function guessTrough(snapshot, trough, crest) {
   const lipTop = Math.round(crest.y * height), lipBottom = Math.round(trough.y * height);
   const lipHeight = Math.max(6, lipBottom - lipTop);
   const rows = Math.min(height - 1, lipBottom + lipHeight * 4 + 30) - lipTop;
-  if (rows < 12) return trough;
+  if (rows < 12) {
+    return trough;
+  }
 
   const brightness = columnBrightness(snapshot, Math.round(trough.x * width), lipTop, rows);
   const lip = brightestAbove(brightness, lipBottom - lipTop);
   const below = lipBottom - lipTop;
   let start = -1;
   for (let y = below; y <= Math.min(rows - 7, below + lipHeight * SEARCH_LIP_HEIGHTS); y++) {
-    if (brightness[y] < DARK * lip && brightness[y + 6] - brightness[y] >= BRIGHTER_BY) start = y;
+    if (brightness[y] < DARK * lip && brightness[y + 6] - brightness[y] >= BRIGHTER_BY) {
+      start = y;
+    }
   }
-  if (start < 0) return trough;
+  if (start < 0) {
+    return trough;
+  }
   return { x: trough.x, y: (lipTop + steepestRise(brightness, start)) / height };
 }
 
@@ -1310,7 +1493,10 @@ function smooth(values, radius) {
     let sum = 0, count = 0;
     for (let k = -radius; k <= radius; k++) {
       const j = y + k;
-      if (j >= 0 && j < values.length) { sum += values[j]; count++; }
+      if (j >= 0 && j < values.length) {
+        sum += values[j];
+        count++;
+      }
     }
     out[y] = sum / count;
   }
@@ -1319,7 +1505,9 @@ function smooth(values, radius) {
 
 function brightestAbove(values, end) {
   let max = values[0];
-  for (let y = 0; y < Math.max(1, end); y++) max = Math.max(max, values[y]);
+  for (let y = 0; y < Math.max(1, end); y++) {
+    max = Math.max(max, values[y]);
+  }
   return max;
 }
 
@@ -1328,7 +1516,10 @@ function steepestRise(values, start) {
   let row = start + 1, steepest = -Infinity;
   for (let y = start; y < start + 6; y++) {
     const rise = values[y + 1] - values[y];
-    if (rise > steepest) { steepest = rise; row = y + 1; }
+    if (rise > steepest) {
+      steepest = rise;
+      row = y + 1;
+    }
   }
   return row;
 }
@@ -1416,30 +1607,43 @@ class WaveDetector {
    */
   update({ image, brightness, horizon, horizonSeen, motion, view, auto, now }) {
     this.followCamera(motion.dx, motion.dy);
-    if (this.held && now > this.held.until) this.offerHeld();
+    if (this.held && now > this.held.until) {
+      this.offerHeld();
+    }
 
     if (motion.moving && auto && horizon) {
       this.pause('camera moving, paused', true);
       return;
     }
     if (!auto || !horizon) {
-      if (!auto || !horizonSeen) { this.white.reset(); this.event = null; this.pending = []; }
+      if (!auto || !horizonSeen) {
+        this.white.reset();
+        this.event = null;
+        this.pending = [];
+      }
       this.pause(auto ? 'no horizon' : 'auto off', false);
       return;
     }
 
     const analysis = this.white.analyse(image, brightness, horizon, motion.dx, motion.dy);
     this.analysis = analysis;
-    if (!analysis) return;                               // background just seeded
+    if (!analysis) {  // background just seeded
+      return;
+    }
     const isNew = this.describe(analysis, image);
     this.live = null;
-    if (isNew) this.observe(analysis, image, horizon, view, now);
+    if (isNew) {
+      this.observe(analysis, image, horizon, view, now);
+    }
     this.closeEventIfOver(now);
     this.checkPending(analysis.white, image, view, now);
   }
 
   pause(state, forgetEvent) {
-    if (forgetEvent) { this.white.reset(); this.event = null; }
+    if (forgetEvent) {
+      this.white.reset();
+      this.event = null;
+    }
     this.live = null;
     this.analysis = null;
     this.debug.patchBox = null;
@@ -1449,7 +1653,10 @@ class WaveDetector {
   followCamera(dx, dy) {
     this.sceneX += dx;
     for (const e of [this.event, ...this.pending]) {
-      if (e) { e.shift.x += dx; e.shift.y += dy; }
+      if (e) {
+        e.shift.x += dx;
+        e.shift.y += dy;
+      }
     }
   }
 
@@ -1471,7 +1678,9 @@ class WaveDetector {
 
   observe(analysis, image, horizon, view, now) {
     const { patch } = analysis;
-    if (!this.event) this.event = { start: now, last: now, snapshots: 0, best: null, shift: { x: 0, y: 0 }, widthMax: 0, track: [] };
+    if (!this.event) {
+      this.event = { start: now, last: now, snapshots: 0, best: null, shift: { x: 0, y: 0 }, widthMax: 0, track: [] };
+    }
     const e = this.event;
     e.snapshots++;
     e.last = now;
@@ -1479,7 +1688,9 @@ class WaveDetector {
     const box = patch.bounds();
     e.track.push({ top: box.y0 - e.shift.y, bottom: box.y1 - e.shift.y, rows: patch.tallest.extent });
     const isBigger = !e.best || (patch.tallest.extent > e.best.rows && now - e.start <= BIGGEST_VIEW_WITHIN_MS);
-    if (isBigger) e.best = this.captureView(analysis, image, horizon, now);
+    if (isBigger) {
+      e.best = this.captureView(analysis, image, horizon, now);
+    }
     this.live = { trough: e.best.trough, crest: e.best.crest };
   }
 
@@ -1488,7 +1699,9 @@ class WaveDetector {
     const { patch, threshold } = analysis;
     const t = patch.tallest;
     const measured = measureAtFullResolution(this.source, patch, image.width, image.height, threshold);
-    if (measured) this.debug.measured = { ...measured, at: now };
+    if (measured) {
+      this.debug.measured = { ...measured, at: now };
+    }
     const x = (t.x + 0.5) / image.width;
     return {
       rows: t.extent,
@@ -1505,7 +1718,9 @@ class WaveDetector {
 
   closeEventIfOver(now) {
     const e = this.event;
-    if (!e || (now - e.start <= EVENT_MAX_MS && now - e.last <= EVENT_QUIET_MS)) return;
+    if (!e || (now - e.start <= EVENT_MAX_MS && now - e.last <= EVENT_QUIET_MS)) {
+      return;
+    }
     if (e.snapshots >= MIN_EVENT_SNAPSHOTS) {
       const sinceBest = { x: e.shift.x - e.best.shiftThen.x, y: e.shift.y - e.best.shiftThen.y };
       this.pending.push({ ...e, shift: sinceBest, checkAt: Math.max(now, e.best.time + CHECK_AFTER_MS) });
@@ -1517,10 +1732,16 @@ class WaveDetector {
 
   checkPending(white, image, view, now) {
     this.pending = this.pending.filter(e => {
-      if (now < e.checkAt) return true;
+      if (now < e.checkAt) {
+        return true;
+      }
       const verdict = this.judge(e, white, image, view);
-      if (verdict.reject) this.reject(verdict.reject, now);
-      else this.collect(verdict.wave, e, image, now);
+      if (verdict.reject) {
+        this.reject(verdict.reject, now);
+      }
+      else {
+        this.collect(verdict.wave, e, image, now);
+      }
       return false;
     });
   }
@@ -1536,12 +1757,24 @@ class WaveDetector {
     // If the white left the view or the camera moved a lot, the stay check can't tell: let the user decide.
     const cameraMoved = Math.hypot(e.shift.x, e.shift.y) > CAMERA_MOVED * image.width;
     const unverified = !stay.inView || (cameraMoved && stay.fraction < MIN_STAYED);
-    if (unverified && !this.offerUnverified) return { reject: stay.inView ? 'camera moved' : 'left the frame' };
-    if (!unverified && stay.fraction < MIN_STAYED) return { reject: `moved away (${Math.round(stay.fraction * 100)}% stayed)` };
-    if (slide.slid) return { reject: 'slid toward the shore (swash or rolling foam)' };
-    if (e.widthMax < MIN_WIDTH_M) return { reject: `too narrow (${e.widthMax.toFixed(1)} m)` };
-    if (!measured) return { reject: 'could not measure' };
-    if (measured.height < MIN_HEIGHT_M) return { reject: `too small (${Math.round(measured.height * 100)} cm)` };
+    if (unverified && !this.offerUnverified) {
+      return { reject: stay.inView ? 'camera moved' : 'left the frame' };
+    }
+    if (!unverified && stay.fraction < MIN_STAYED) {
+      return { reject: `moved away (${Math.round(stay.fraction * 100)}% stayed)` };
+    }
+    if (slide.slid) {
+      return { reject: 'slid toward the shore (swash or rolling foam)' };
+    }
+    if (e.widthMax < MIN_WIDTH_M) {
+      return { reject: `too narrow (${e.widthMax.toFixed(1)} m)` };
+    }
+    if (!measured) {
+      return { reject: 'could not measure' };
+    }
+    if (measured.height < MIN_HEIGHT_M) {
+      return { reject: `too small (${Math.round(measured.height * 100)} cm)` };
+    }
     const note = !unverified ? null
       : stay.inView ? "Couldn't double-check this one: the camera moved." : "Couldn't double-check this one: it left the view.";
     return { wave: { trough: best.trough, crest: best.crest, horizon: best.horizon, snapshot: best.snapshot, note, start: e.start } };
@@ -1566,7 +1799,9 @@ class WaveDetector {
       this.held.views.push(wave);
       this.reject('same wave, added as another view', now);
     } else {
-      if (this.held) this.offerHeld();
+      if (this.held) {
+        this.offerHeld();
+      }
       this.held = { sceneX, start: e.start, until: now + HOLD_MS, views: [wave] };
     }
   }
@@ -1592,11 +1827,17 @@ function stayedFraction(e, white, image) {
       let inside = 0, stayed = 0;
       for (const j of pixels) {
         const x = j % width + e.shift.x + ox, y = ((j / width) | 0) + e.shift.y + oy;
-        if (x < 0 || x >= width || y < 0 || y >= height) continue;
+        if (x < 0 || x >= width || y < 0 || y >= height) {
+          continue;
+        }
         inside++;
-        if (white[y * width + x]) stayed++;
+        if (white[y * width + x]) {
+          stayed++;
+        }
       }
-      if (inside < pixels.length * 0.5) continue;
+      if (inside < pixels.length * 0.5) {
+        continue;
+      }
       inView = true;
       fraction = Math.max(fraction, stayed / inside);
     }
@@ -1617,7 +1858,9 @@ function patchWidth(patch, image, horizon, view) {
   const t = patch.tallest, box = patch.bounds();
   const bottom = { x: (t.x + 0.5) / image.width, y: (t.bottom + 1) / image.height };
   const distance = view.waterDistance(bottom, horizon);
-  if (distance === Infinity) return Infinity;
+  if (distance === Infinity) {
+    return Infinity;
+  }
   return view.widthAt((box.x1 - box.x0 + 1) * view.width / image.width, distance);
 }
 
@@ -1689,7 +1932,10 @@ class Screen {
     let best = 0, bestDistance = Infinity;
     points.forEach((q, i) => {
       const d = Math.hypot((q.x - p.x) * this.canvas.width, (q.y - p.y) * this.canvas.height);
-      if (d < bestDistance) { bestDistance = d; best = i; }
+      if (d < bestDistance) {
+        bestDistance = d;
+        best = i;
+      }
     });
     return best;
   }
@@ -1748,7 +1994,9 @@ class Screen {
    */
   handles({ image, horizon, points, labels, color, dragging }) {
     this.drawImage(image);
-    if (horizon) this.lineAcross(horizon, COLORS.horizon, 2, [10, 6]);
+    if (horizon) {
+      this.lineAcross(horizon, COLORS.horizon, 2, [10, 6]);
+    }
     const ctx = this.context, s = this.scale;
     if (points.length === 2) {
       ctx.strokeStyle = color;
@@ -1769,9 +2017,14 @@ class Screen {
       ctx.arc(x, y, 11 * s, 0, 2 * Math.PI);
       ctx.fill();
       ctx.stroke();
-      if (labels[i]) { ctx.fillStyle = '#fff'; ctx.fillText(labels[i], x + 16 * s, y); }
+      if (labels[i]) {
+        ctx.fillStyle = '#fff';
+        ctx.fillText(labels[i], x + 16 * s, y);
+      }
     });
-    if (dragging != null && points[dragging]) this.magnifier(image, points[dragging], color);
+    if (dragging != null && points[dragging]) {
+      this.magnifier(image, points[dragging], color);
+    }
   }
 
   /** 3× magnified circle above (or below, near the top) a point, with a crosshair on it. */
@@ -1835,7 +2088,11 @@ class Review {
 
   /** Point 0 is the trough, point 1 the crest. */
   movePoint(i, p) {
-    if (i === 0) this.view.trough = p; else this.view.crest = p;
+    if (i === 0) {
+      this.view.trough = p;
+    } else {
+      this.view.crest = p;
+    }
   }
 }
 
@@ -1902,13 +2159,17 @@ class Calibration {
   }
 
   labels() {
-    if (!this.isComplete) return ['feet'];
+    if (!this.isComplete) {
+      return ['feet'];
+    }
     return this.points[0].y > this.points[1].y ? ['feet', 'head'] : ['head', 'feet'];
   }
 
   /** Phone height in metres for a person `personHeight` metres tall, or null. */
   phoneHeight(view, personHeight) {
-    if (!this.isComplete) return null;
+    if (!this.isComplete) {
+      return null;
+    }
     const [feet, head] = this.feetAndHead();
     return phoneHeightFromPerson(view, feet, head, this.horizon, personHeight);
   }
@@ -2003,12 +2264,16 @@ class VerticalMoves {
   /** Feeds one devicemotion event. Returns { rise } or { walked: true } when a move ends, else null. */
   add(event) {
     const gravity = event.accelerationIncludingGravity, linear = event.acceleration;
-    if (!gravity || gravity.x == null || !linear || linear.x == null) return null;   // needs gravity-free acceleration
+    if (!gravity || gravity.x == null || !linear || linear.x == null) {  // needs gravity-free acceleration
+      return null;
+    }
     const dt = Math.min(0.1, Math.max(0.001, (event.interval || 16) / 1000));
     const upward = this.upwardAcceleration(gravity, linear, dt);
 
     if (!this.move) {
-      if (Math.abs(upward) > MOVE_STARTS) this.move = { seconds: 0, speed: upward * dt, rise: 0, stillFor: 0 };
+      if (Math.abs(upward) > MOVE_STARTS) {
+        this.move = { seconds: 0, speed: upward * dt, rise: 0, stillFor: 0 };
+      }
       return null;
     }
     const m = this.move;
@@ -2016,7 +2281,9 @@ class VerticalMoves {
     m.speed += upward * dt;
     m.rise += m.speed * dt;
     m.stillFor = Math.abs(upward) < STILL_BELOW ? m.stillFor + dt : 0;
-    if (m.stillFor < STILL_FOR_S && m.seconds <= LONGEST_MOVE_S) return null;
+    if (m.stillFor < STILL_FOR_S && m.seconds <= LONGEST_MOVE_S) {
+      return null;
+    }
     this.move = null;
     return m.seconds > WALKING_S ? { walked: true } : { rise: m.rise };
   }
@@ -2065,7 +2332,9 @@ class HeightReminder {
 
   /** Called shortly after the camera starts. */
   remindIfNotSet() {
-    if (this.heightSetAt === null) this.show('notset');
+    if (this.heightSetAt === null) {
+      this.show('notset');
+    }
   }
 
   /** The time reminder; checked whenever the status is refreshed. */
@@ -2077,27 +2346,43 @@ class HeightReminder {
 
   onMotion(event) {
     const result = this.moves.add(event);
-    if (!result) return;
+    if (!result) {
+      return;
+    }
     if (result.walked) {
-      if (this.heightSetAt !== null) this.show('moved');
+      if (this.heightSetAt !== null) {
+        this.show('moved');
+      }
       return;
     }
     this.netRise += result.rise;
-    if (this.heightSetAt !== null && Math.abs(this.netRise) > DRIFT_M) this.show('drift');
+    if (this.heightSetAt !== null && Math.abs(this.netRise) > DRIFT_M) {
+      this.show('drift');
+    }
   }
 
   show(kind) {
-    if (this.dismissed[kind] || !this.canPrompt()) return;
-    if (this.kind && PRIORITY[this.kind] > PRIORITY[kind]) return;
+    if (this.dismissed[kind] || !this.canPrompt()) {
+      return;
+    }
+    if (this.kind && PRIORITY[this.kind] > PRIORITY[kind]) {
+      return;
+    }
     this.kind = kind;
     this.onChange();
   }
 
   /** "Later" / "It's fine" / "Same height" / "Not now". */
   dismiss(now = performance.now()) {
-    if (this.kind === 'time') this.snoozedUntil = now + SNOOZE_MS;
-    else if (this.kind === 'drift' || this.kind === 'moved') this.netRise = 0;
-    if (this.kind === 'notset') this.dismissed.notset = true;
+    if (this.kind === 'time') {
+      this.snoozedUntil = now + SNOOZE_MS;
+    }
+    else if (this.kind === 'drift' || this.kind === 'moved') {
+      this.netRise = 0;
+    }
+    if (this.kind === 'notset') {
+      this.dismissed.notset = true;
+    }
     this.kind = null;
     this.onChange();
   }
@@ -2245,7 +2530,9 @@ function multiply(a, b) {
   for (let col = 0; col < 4; col++) {
     for (let row = 0; row < 4; row++) {
       let sum = 0;
-      for (let k = 0; k < 4; k++) sum += a[k * 4 + row] * b[col * 4 + k];
+      for (let k = 0; k < 4; k++) {
+        sum += a[k * 4 + row] * b[col * 4 + k];
+      }
       out[col * 4 + row] = sum;
     }
   }
@@ -2340,7 +2627,9 @@ class MeasurementRun {
     this.outcome = null;
     this.ended = false;
     /** Resolves to the outcome once the session has ended. */
-    this.finished = new Promise(resolve => { this.resolveFinished = resolve; });
+    this.finished = new Promise(resolve => {
+      this.resolveFinished = resolve;
+    });
   }
 
   start() {
@@ -2353,9 +2642,15 @@ class MeasurementRun {
 
   /** Ends the session; `outcome` is what measure() resolves to. */
   finish(outcome) {
-    if (this.ended || this.outcome) return;
+    if (this.ended || this.outcome) {
+      return;
+    }
     this.outcome = outcome;
-    try { this.hitSource.cancel(); } catch { /* already gone */ }
+    try {
+      this.hitSource.cancel();
+    } catch {
+      // already cancelled
+    }
     this.session.end().catch(() => {});
   }
 
@@ -2364,7 +2659,9 @@ class MeasurementRun {
   }
 
   onFrame(frame) {
-    if (this.ended || this.outcome) return;
+    if (this.ended || this.outcome) {
+      return;
+    }
     this.session.requestAnimationFrame((t, next) => this.onFrame(next));
     this.clearLayer();
     if (performance.now() - this.startedAt > TIMEOUT_MS) {
@@ -2381,30 +2678,42 @@ class MeasurementRun {
     const level = surfaceTiltCos(surface) >= LEVEL;
     this.drawMarker(pose, surface, level);
     this.showDebugInfo(pose, surface);
-    if (level) this.addSample(pose.transform.position.y - surface.transform.position.y);
-    else this.say('That surface is not level. Aim at flat sand');
+    if (level) {
+      this.addSample(pose.transform.position.y - surface.transform.position.y);
+    }
+    else {
+      this.say('That surface is not level. Aim at flat sand');
+    }
   }
 
   addSample(height) {
     this.samples.push(height);
-    if (this.samples.length > SAMPLES) this.samples.shift();
+    if (this.samples.length > SAMPLES) {
+      this.samples.shift();
+    }
     const sorted = [...this.samples].sort((a, b) => a - b);
     const median = sorted[sorted.length >> 1];
     this.ui.arValue.textContent = this.format(median);
     this.say('Hold still…');
-    if (this.samples.length === SAMPLES && spread(sorted) < AGREE_M) this.finish({ height: median });
+    if (this.samples.length === SAMPLES && spread(sorted) < AGREE_M) {
+      this.finish({ height: median });
+    }
   }
 
   clearLayer() {
     const layer = this.session.renderState.baseLayer;
-    if (!this.gl || !layer) return;
+    if (!this.gl || !layer) {
+      return;
+    }
     this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, layer.framebuffer);
     this.gl.clearColor(0, 0, 0, 0);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
   }
 
   drawMarker(pose, surface, level) {
-    if (!this.marker) return;
+    if (!this.marker) {
+      return;
+    }
     const layer = this.session.renderState.baseLayer;
     for (const view of pose.views) {
       const vp = layer.getViewport(view);
@@ -2416,7 +2725,9 @@ class MeasurementRun {
   showDebugInfo(pose, surface) {
     const debug = this.ui.arDebug;
     debug.hidden = !this.showDebug();
-    if (debug.hidden) return;
+    if (debug.hidden) {
+      return;
+    }
     const p = pose.transform.position, s = surface.transform.position;
     const tilt = Math.acos(Math.max(-1, Math.min(1, surfaceTiltCos(surface)))) * 180 / Math.PI;
     const aim = Math.hypot(p.x - s.x, p.y - s.y, p.z - s.z);
@@ -2438,7 +2749,9 @@ function surfaceTiltCos(surface) {
 
 /** Spread of sorted samples: the middle 26 of 30 (ignoring two at each end), or all of them before that. */
 function spread(sorted) {
-  if (sorted.length >= SAMPLES) return sorted[SAMPLES - 3] - sorted[2];
+  if (sorted.length >= SAMPLES) {
+    return sorted[SAMPLES - 3] - sorted[2];
+  }
   return sorted.length ? sorted[sorted.length - 1] - sorted[0] : 0;
 }
 
@@ -2466,14 +2779,23 @@ class DebugOverlay {
   /** Paints the white / new-white masks of the last analysis (once per snapshot, not per frame). */
   updateMask(analysis) {
     this.hasMask = Boolean(analysis);
-    if (!analysis) return;
+    if (!analysis) {
+      return;
+    }
     const { width, height, white, fresh } = analysis;
-    if (this.mask.width !== width || this.mask.height !== height) { this.mask.width = width; this.mask.height = height; }
+    if (this.mask.width !== width || this.mask.height !== height) {
+      this.mask.width = width;
+      this.mask.height = height;
+    }
     const pixels = this.maskContext.createImageData(width, height), out = pixels.data;
     for (let j = 0; j < white.length; j++) {
       const o = j * 4;
-      if (fresh[j]) out.set([255, 60, 210, 230], o);
-      else if (white[j]) out.set([0, 210, 255, 120], o);
+      if (fresh[j]) {
+        out.set([255, 60, 210, 230], o);
+      }
+      else if (white[j]) {
+        out.set([0, 210, 255, 120], o);
+      }
     }
     this.maskContext.putImageData(pixels, 0, 0);
   }
@@ -2483,7 +2805,9 @@ class DebugOverlay {
   }
 
   drawMask(screen) {
-    if (!this.hasMask) return;
+    if (!this.hasMask) {
+      return;
+    }
     const ctx = screen.context, b = screen.frameBox();
     ctx.save();
     ctx.imageSmoothingEnabled = false;
@@ -2504,7 +2828,9 @@ class DebugOverlay {
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 1.25 * s;
     const line = state.horizon.display, now = performance.now();
-    if (line) this.drawDistances(screen, state.view, line);
+    if (line) {
+      this.drawDistances(screen, state.view, line);
+    }
     this.drawHorizonEdges(screen, state.horizon.debug);
     this.drawDetection(screen, state.detector, now);
     this.drawWaveLabels(screen, state.recentWaves, state.format);
@@ -2519,12 +2845,20 @@ class DebugOverlay {
     let lastLabelY = Infinity;
     for (const distance of DISTANCES_M) {
       const points = view.pointsAtDistance(distance, horizon).map(p => screen.toCanvas(p));
-      if (points.length < 2) continue;
+      if (points.length < 2) {
+        continue;
+      }
       ctx.beginPath();
-      points.forEach((p, i) => (i ? ctx.lineTo(...p) : ctx.moveTo(...p)));
+      ctx.moveTo(...points[0]);
+      for (const p of points.slice(1)) {
+        ctx.lineTo(...p);
+      }
       ctx.stroke();
       const [x, y] = points[0];
-      if (lastLabelY - y > 13 * s) { ctx.fillText(`${distance} m`, x + 4 * s, y - 7 * s); lastLabelY = y; }
+      if (lastLabelY - y > 13 * s) {
+        ctx.fillText(`${distance} m`, x + 4 * s, y - 7 * s);
+        lastLabelY = y;
+      }
     }
   }
 
@@ -2574,7 +2908,9 @@ class DebugOverlay {
     const ctx = screen.context, s = screen.scale;
     ctx.fillStyle = '#e3f0f2';
     for (const { crest, measurement } of waves) {
-      if (!measurement) continue;
+      if (!measurement) {
+        continue;
+      }
       const [x, y] = screen.toCanvas(crest);
       const distance = measurement.distance != null ? measurement.distance.toFixed(0) : '?';
       ctx.fillText(`${format(measurement.height)} @ ${distance} m`, x + 9 * s, y);
@@ -2591,7 +2927,9 @@ class DebugOverlay {
     ctx.fillStyle = 'rgba(0,0,0,.62)';
     ctx.fillRect(x, y, width, height);
     ctx.fillStyle = '#e3f0f2';
-    lines.forEach((line, i) => ctx.fillText(line, x + pad, y + pad + lineHeight * (i + 0.5)));
+    for (const [i, line] of lines.entries()) {
+      ctx.fillText(line, x + pad, y + pad + lineHeight * (i + 0.5));
+    }
   }
 }
 
@@ -2699,7 +3037,9 @@ class App {
 
   /** { height, distance } of a wave with the current settings, or null. */
   measure(wave) {
-    if (!this.video.videoWidth) return null;
+    if (!this.video.videoWidth) {
+      return null;
+    }
     return this.view().measureWave(wave.trough, wave.crest, wave.horizon);
   }
 
@@ -2738,7 +3078,11 @@ class App {
   }
 
   stopCamera() {
-    if (this.stream) this.stream.getTracks().forEach(track => track.stop());
+    if (this.stream) {
+      for (const track of this.stream.getTracks()) {
+        track.stop();
+      }
+    }
     this.stream = null;
   }
 
@@ -2746,7 +3090,9 @@ class App {
 
   /** One snapshot: camera motion, horizon, waves. */
   tick() {
-    if (this.frozen || this.calibration || !this.stream || !this.video.videoWidth) return;
+    if (this.frozen || this.calibration || !this.stream || !this.video.videoWidth) {
+      return;
+    }
     const started = performance.now();
     const image = downscale(this.video);
     const light = brightness(image);
@@ -2759,7 +3105,9 @@ class App {
       horizonSeen: Boolean(this.horizon.display),
       motion: this.lastMotion, view: this.view(), auto: this.auto, now: performance.now(),
     });
-    if (this.prefs.debug) this.debugOverlay.updateMask(this.detector.analysis);
+    if (this.prefs.debug) {
+      this.debugOverlay.updateMask(this.detector.analysis);
+    }
     this.timing = { ms: performance.now() - started, rate: this.timing.last ? 1000 / (started - this.timing.last) : 0, last: started };
     this.renderStatus();
   }
@@ -2773,9 +3121,15 @@ class App {
 
   draw() {
     this.screen.clear();
-    if (this.review) this.drawReview();
-    else if (this.calibration) this.drawCalibration();
-    else this.drawLive();
+    if (this.review) {
+      this.drawReview();
+    }
+    else if (this.calibration) {
+      this.drawCalibration();
+    }
+    else {
+      this.drawLive();
+    }
   }
 
   drawReview() {
@@ -2796,14 +3150,26 @@ class App {
 
   drawLive() {
     const screen = this.screen;
-    if (this.frozen) screen.drawImage(this.video);
-    if (this.prefs.debug) this.debugOverlay.drawMask(screen);
-    if (this.horizon.display) screen.horizon(this.horizon.display, this.horizon.isConfident);
-    for (const wave of this.waves.slice(-3)) screen.marks([wave.trough, wave.crest], COLORS.waveFaded);
+    if (this.frozen) {
+      screen.drawImage(this.video);
+    }
+    if (this.prefs.debug) {
+      this.debugOverlay.drawMask(screen);
+    }
+    if (this.horizon.display) {
+      screen.horizon(this.horizon.display, this.horizon.isConfident);
+    }
+    for (const wave of this.waves.slice(-3)) {
+      screen.marks([wave.trough, wave.crest], COLORS.waveFaded);
+    }
     screen.marks(this.taps, this.pickingHorizon ? COLORS.horizon : COLORS.wave);
     const live = this.detector.live;
-    if (live && !this.frozen) screen.marks([live.trough, live.crest], COLORS.live, [6, 4]);
-    if (this.prefs.debug && this.stream) this.debugOverlay.draw(screen, this.debugState());
+    if (live && !this.frozen) {
+      screen.marks([live.trough, live.crest], COLORS.live, [6, 4]);
+    }
+    if (this.prefs.debug && this.stream) {
+      this.debugOverlay.draw(screen, this.debugState());
+    }
   }
 
   debugState() {
@@ -2826,27 +3192,37 @@ class App {
     const canvas = this.ui.overlay;
     canvas.addEventListener('pointerdown', event => this.onPointerDown(event));
     canvas.addEventListener('pointermove', event => this.onPointerMove(event));
-    const release = () => { this.drag = null; };
+    const release = () => {
+      this.drag = null;
+    };
     canvas.addEventListener('pointerup', release);
     canvas.addEventListener('pointercancel', release);
   }
 
   onPointerDown(event) {
-    if (!this.stream) return;
+    if (!this.stream) {
+      return;
+    }
     const p = this.screen.fromPointer(event);
     if (this.review) {
       this.grabReviewHandle(p, event);
     } else if (this.calibration) {
       this.tapCalibration(p, event);
     } else {
-      if (this.pickingHorizon) this.tapHorizonPoint(p);
-      else this.tapWavePoint(p);
+      if (this.pickingHorizon) {
+        this.tapHorizonPoint(p);
+      }
+      else {
+        this.tapWavePoint(p);
+      }
       this.renderStats();
     }
   }
 
   onPointerMove(event) {
-    if (!this.drag) return;
+    if (!this.drag) {
+      return;
+    }
     const p = this.screen.fromPointer(event);
     if (this.calibration) {
       this.calibration.points[this.drag.index] = p;
@@ -2865,7 +3241,9 @@ class App {
   /** Two taps on the horizon pick it by hand; it's then followed as the camera moves. */
   tapHorizonPoint(p) {
     this.taps.push(p);
-    if (this.taps.length < 2) return;
+    if (this.taps.length < 2) {
+      return;
+    }
     this.horizon.pick(this.taps);
     this.taps = [];
     this.pickingHorizon = false;
@@ -2876,18 +3254,28 @@ class App {
   /** Measuring by hand: tap a wave's trough, then its crest (on the frozen frame if frozen). */
   tapWavePoint(p) {
     const horizon = this.frozen ? (this.horizon.current || this.horizon.display) : this.horizon.display;
-    if (!horizon) return;
+    if (!horizon) {
+      return;
+    }
     this.taps.push(p);
-    if (this.taps.length < 2) return;
+    if (this.taps.length < 2) {
+      return;
+    }
     const [trough, crest] = this.taps;
     this.taps = [];
     this.addWave({ trough, crest, horizon: horizon.map(q => ({ ...q })) });
-    if (this.frozen) this.toggleFreeze();
+    if (this.frozen) {
+      this.toggleFreeze();
+    }
   }
 
   undo() {
-    if (this.taps.length) this.taps.pop();
-    else this.waves.pop();
+    if (this.taps.length) {
+      this.taps.pop();
+    }
+    else {
+      this.waves.pop();
+    }
     this.renderStats();
   }
 
@@ -2896,7 +3284,9 @@ class App {
   onWaveDetected({ views }) {
     if (this.prefs.confirm && views[0].snapshot) {
       this.reviews.push(new Review(views));
-      if (!this.review) this.nextReview();
+      if (!this.review) {
+        this.nextReview();
+      }
     } else {
       this.logDetectedWave(views[0]);
     }
@@ -2925,21 +3315,29 @@ class App {
   }
 
   stepReview(delta) {
-    if (!this.review) return;
+    if (!this.review) {
+      return;
+    }
     const i = this.review.index + delta;
-    if (i < 0 || i >= this.review.views.length) return;
+    if (i < 0 || i >= this.review.views.length) {
+      return;
+    }
     this.review.select(i);
     this.showReview();
   }
 
   saveReview() {
-    if (!this.review) return;
+    if (!this.review) {
+      return;
+    }
     this.logDetectedWave(this.review.view);
     this.nextReview();
   }
 
   skipReview() {
-    if (!this.review) return;
+    if (!this.review) {
+      return;
+    }
     this.detector.countSkipped();
     this.nextReview();
   }
@@ -2947,7 +3345,9 @@ class App {
   /** Adds a wave to the session if it can be measured (its trough is below the horizon). */
   addWave({ trough, crest, horizon }) {
     const wave = { trough, crest, horizon };
-    if (!this.measure(wave)) return false;
+    if (!this.measure(wave)) {
+      return false;
+    }
     this.waves.push(wave);
     this.renderStats();
     return true;
@@ -2955,7 +3355,9 @@ class App {
 
   /** A detected wave (saved from review, or logged directly with Confirm off) also flashes "wave logged". */
   logDetectedWave(view) {
-    if (!this.addWave(view)) return;
+    if (!this.addWave(view)) {
+      return;
+    }
     this.lastLoggedAt = performance.now();
     this.renderStatus();
   }
@@ -2981,7 +3383,9 @@ class App {
   }
 
   startCalibration() {
-    if (!this.stream || this.review) return;
+    if (!this.stream || this.review) {
+      return;
+    }
     const image = snapshot(this.video);
     const horizon = findHorizon(image) || this.horizon.current || this.horizon.display;
     if (!horizon) {
@@ -3013,7 +3417,9 @@ class App {
   }
 
   onPersonHeightTyped() {
-    if (this.calibration?.isComplete) this.previewCalibration();
+    if (this.calibration?.isComplete) {
+      this.previewCalibration();
+    }
   }
 
   personHeight() {
@@ -3030,9 +3436,13 @@ class App {
   }
 
   applyCalibration() {
-    if (!this.calibration) return;
+    if (!this.calibration) {
+      return;
+    }
     const person = this.personHeight(), h = this.calibratedHeight();
-    if (!h) return;
+    if (!h) {
+      return;
+    }
     this.endCalibration();
     this.setMeasuredHeight(h, `Calibrated from a ${this.format(person)} person: phone ${this.format(h)} above the water. `
       + `Every 10 cm their real height differs moves this by about ${this.format(h * 0.1 / person)}.`);
@@ -3087,8 +3497,12 @@ class App {
   /** The reminder's "Re-measure" / "Measure" / "Calibrate". */
   remeasure() {
     this.reminder.accept();
-    if (this.arSupported) this.measureWithAr();
-    else this.startCalibration();
+    if (this.arSupported) {
+      this.measureWithAr();
+    }
+    else {
+      this.startCalibration();
+    }
   }
 
   showMessage(text) {
@@ -3137,7 +3551,11 @@ class App {
 
   toggleFreeze() {
     this.frozen = !this.frozen;
-    if (this.frozen) this.video.pause(); else this.video.play();
+    if (this.frozen) {
+      this.video.pause();
+    } else {
+      this.video.play();
+    }
     this.ui.freeze.textContent = this.frozen ? 'Resume' : 'Freeze';
   }
 
@@ -3158,7 +3576,9 @@ class App {
     this.prefs.debug = on;
     saveSetting('debug', on ? '1' : '0');
     this.ui.debug.setAttribute('aria-pressed', on);
-    if (!on) this.debugOverlay.clearMask();
+    if (!on) {
+      this.debugOverlay.clearMask();
+    }
   }
 
   setUnits(units) {
@@ -3202,12 +3622,24 @@ class App {
   }
 
   hintText() {
-    if (this.review) return 'Check this wave';
-    if (this.calibration) return 'Calibrate phone height';
-    if (this.pickingHorizon) return this.taps.length ? 'Tap the horizon on the right' : 'Tap the horizon on the left';
-    if (!this.horizon.display) return 'Point at the sea with the horizon in view';
-    if (this.taps.length) return 'Tap the crest';
-    if (this.auto && this.lastMotion.moving) return 'Hold the phone steady';
+    if (this.review) {
+      return 'Check this wave';
+    }
+    if (this.calibration) {
+      return 'Calibrate phone height';
+    }
+    if (this.pickingHorizon) {
+      return this.taps.length ? 'Tap the horizon on the right' : 'Tap the horizon on the left';
+    }
+    if (!this.horizon.display) {
+      return 'Point at the sea with the horizon in view';
+    }
+    if (this.taps.length) {
+      return 'Tap the crest';
+    }
+    if (this.auto && this.lastMotion.moving) {
+      return 'Hold the phone steady';
+    }
     return this.auto ? 'Watching for breaking waves' : 'Tap the trough of a breaking wave';
   }
 
@@ -3231,7 +3663,9 @@ class App {
     this.reminder.checkTime(performance.now());
     const texts = this.reminder.texts({ phoneHeight: this.phoneHeight, canUseAr: this.arSupported, format: m => this.format(m) });
     ui.reminder.hidden = !texts || Boolean(this.review) || Boolean(this.calibration) || !this.stream;
-    if (ui.reminder.hidden) return;
+    if (ui.reminder.hidden) {
+      return;
+    }
     ui.reminderText.textContent = texts.message;
     ui.reminderLater.textContent = texts.later;
     ui.reminderGo.textContent = texts.go;

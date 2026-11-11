@@ -1,730 +1,3268 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Wave Gauge Live</title>
-<style>
-:root{--bg:#081a20;--fg:#e3f0f2;--muted:#8aa5ad;--line:#21404a;--panel:rgba(8,26,32,.82);--wave:#3cc3cf;--hz:#f0a24a;--bad:#ff7a6b;--ink:#04191d;color-scheme:dark}
-*{box-sizing:border-box}
-[hidden]{display:none!important}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,sans-serif;overflow:hidden}
-#app{position:fixed;inset:0;display:flex;flex-direction:column}
-#view{position:relative;flex:1;min-height:0;background:#000;touch-action:none}
-video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
-#start{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;background:var(--bg)}
-#start h1{margin:0;font-size:1.6rem}
-#start p{margin:0;color:var(--muted);max-width:32em}
-#hint{position:absolute;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top,0px));background:var(--panel);padding:6px 12px;border-radius:999px;font-size:.85rem;white-space:nowrap;max-width:94%;overflow:hidden;text-overflow:ellipsis}
-#live{position:absolute;right:calc(10px + env(safe-area-inset-right,0px));top:calc(48px + env(safe-area-inset-top,0px));background:var(--panel);padding:8px 12px;border-radius:12px;text-align:right}
-#live .v{font-size:1.8rem;font-weight:800;font-variant-numeric:tabular-nums}
-#live .s{color:var(--wave);font-size:.8rem}
-#bar{background:var(--bg);border-top:1px solid var(--line);padding:10px max(12px,env(safe-area-inset-left,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:8px}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-button{font:600 .95rem system-ui,sans-serif;border:1px solid var(--line);background:#0f262e;color:var(--fg);border-radius:10px;padding:10px 12px;cursor:pointer}
-button.primary{background:var(--wave);color:var(--ink);border-color:var(--wave)}
-button[aria-pressed=true]{border-color:var(--fg);box-shadow:inset 0 0 0 1px var(--fg)}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-variant-numeric:tabular-nums}
-.stats span{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.stats b{font-size:1.1rem}
-input{width:4.5em;font:inherit;padding:6px;border-radius:8px;border:1px solid var(--line);background:#0f262e;color:var(--fg)}
-.muted{color:var(--muted);font-size:.8rem}
-#hzs.ok{color:var(--hz)} #hzs.bad{color:var(--bad)}
-.seg{display:inline-flex;margin-left:auto}
-.seg button{border-radius:0;padding:10px 14px}
-.seg button:first-child{border-radius:10px 0 0 10px}
-.seg button:last-child{border-radius:0 10px 10px 0;border-left:0}
-.seg button[aria-pressed=true]{background:var(--fg);color:var(--ink);box-shadow:none;border-color:var(--fg)}
-#arOverlay{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:12px;padding:24px max(16px,env(safe-area-inset-left,0px)) calc(32px + env(safe-area-inset-bottom,0px));pointer-events:none}
-#arOverlay .card{background:var(--panel);border-radius:14px;padding:14px 16px;text-align:center;max-width:26em;pointer-events:auto}
-#arVal{font-size:2rem;font-weight:800;font-variant-numeric:tabular-nums}
-.sheet{position:absolute;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));bottom:10px;background:var(--panel);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
-.sheet .val{font-size:1.4rem;font-weight:800;font-variant-numeric:tabular-nums}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Wave Gauge Live</title>
+  <style>
+:root {
+  --bg: #081a20;
+  --fg: #e3f0f2;
+  --muted: #8aa5ad;
+  --line: #21404a;
+  --panel: rgba(8, 26, 32, .82);
+  --wave: #3cc3cf;
+  --horizon: #f0a24a;
+  --bad: #ff7a6b;
+  --ink: #04191d;
+  --button: #0f262e;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.4 system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+/* ---- layout: camera view on top, controls below ---- */
+#app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+#view { position: relative; flex: 1; min-height: 0; background: #000; touch-action: none; }
+video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+
+#start {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  padding: 24px; text-align: center; background: var(--bg);
+}
+#start h1 { margin: 0; font-size: 1.6rem; }
+#start p { margin: 0; color: var(--muted); max-width: 32em; }
+
+#hint {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  background: var(--panel); padding: 6px 12px; border-radius: 999px; font-size: .85rem;
+  white-space: nowrap; max-width: 94%; overflow: hidden; text-overflow: ellipsis;
+}
+
+#latest {
+  position: absolute;
+  right: calc(10px + env(safe-area-inset-right, 0px));
+  top: calc(48px + env(safe-area-inset-top, 0px));
+  background: var(--panel); padding: 8px 12px; border-radius: 12px; text-align: right;
+}
+#latest-height { font-size: 1.8rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+#latest-label { color: var(--wave); font-size: .8rem; }
+
+/* bottom sheets over the camera view: review, reminder, calibration */
+.sheet {
+  position: absolute;
+  left: max(10px, env(safe-area-inset-left, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
+  bottom: 10px;
+  background: var(--panel); border-radius: 14px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.sheet .value { font-size: 1.4rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+#bar {
+  background: var(--bg); border-top: 1px solid var(--line);
+  padding: 10px max(12px, env(safe-area-inset-left, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+/* ---- rows ---- */
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row.nowrap { flex-wrap: nowrap; }
+.row.spread { justify-content: space-between; }
+.row.end { justify-content: flex-end; }
+.grow { flex: 1; }
+.center { text-align: center; }
+.push-right { margin-left: auto; }
+.muted { color: var(--muted); font-size: .8rem; }
+.mono { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); margin: 4px 0 8px; white-space: pre; }
+
+.slider-row { flex: 1; display: flex; gap: 10px; align-items: center; min-width: 0; }
+.slider-row input { flex: 1; width: auto; min-width: 0; padding: 0; }
+.slider-row b { font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; }
+
+/* ---- controls ---- */
+button {
+  font: 600 .95rem system-ui, sans-serif;
+  border: 1px solid var(--line); background: var(--button); color: var(--fg);
+  border-radius: 10px; padding: 10px 12px; cursor: pointer;
+}
+button.primary { background: var(--wave); color: var(--ink); border-color: var(--wave); }
+button[aria-pressed=true] { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
+button.unavailable { opacity: .55; }
+
+input {
+  width: 4.5em; font: inherit; padding: 6px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--button); color: var(--fg);
+}
+
+.segmented { display: inline-flex; margin-left: auto; }
+.segmented button { border-radius: 0; padding: 10px 14px; }
+.segmented button:first-child { border-radius: 10px 0 0 10px; }
+.segmented button:last-child { border-radius: 0 10px 10px 0; border-left: 0; }
+.segmented button[aria-pressed=true] { background: var(--fg); color: var(--ink); box-shadow: none; border-color: var(--fg); }
+
+#horizon-status.ok { color: var(--horizon); }
+#horizon-status.bad { color: var(--bad); }
+#auto-status.active { color: var(--wave); }
+
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-variant-numeric: tabular-nums; }
+.stats span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.stats b { font-size: 1.1rem; }
+
+/* ---- AR measuring overlay (shown inside the WebXR session) ---- */
+#ar-overlay {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 12px;
+  padding: 24px max(16px, env(safe-area-inset-left, 0px)) calc(32px + env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
+}
+#ar-overlay .card { background: var(--panel); border-radius: 14px; padding: 14px 16px; text-align: center; max-width: 26em; pointer-events: auto; }
+#ar-value { font-size: 2rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  </style>
 </head>
 <body>
-<div id="arOverlay" hidden><div class="card"><div id="arTxt">Hold the phone at the height you'll film from and aim the ring at the wet sand where the waves stop.</div><div id="arVal">–</div><div id="arDbg" hidden style="font:12px ui-monospace,Menlo,monospace;color:var(--muted);margin:4px 0 8px"></div><button id="arCancel">Cancel</button></div></div>
-<div id="app">
-  <div id="view">
-    <video id="vid" playsinline muted autoplay></video>
-    <canvas id="cv"></canvas>
-    <div id="start">
-      <h1>Wave Gauge Live</h1>
-      <p>Keep the sea horizon in view and set how high your phone is above the water. The page finds the horizon and logs breaking waves by itself, or tap a wave's trough and crest.</p>
-      <button class="primary" id="go">Start camera</button>
-      <p id="err"></p>
+  <div id="ar-overlay" hidden>
+    <div class="card">
+      <div id="ar-text">Hold the phone at the height you'll film from and aim the ring at the wet sand where the waves stop.</div>
+      <div id="ar-value">–</div>
+      <div id="ar-debug" class="mono" hidden></div>
+      <button id="ar-cancel">Cancel</button>
     </div>
-    <div id="hint" hidden></div>
-    <div id="live" hidden><div class="v" id="lv">–</div><div class="s" id="ls"></div></div>
-    <div id="review" class="sheet" hidden>
-      <div id="rvTxt">Drag the handles onto the wave's crest and trough</div>
-      <div class="row" id="rvViews" hidden style="flex-wrap:nowrap"><button id="rvPrev">◀ Earlier</button><span id="rvIdx" class="muted" style="flex:1;text-align:center"></span><button id="rvNext">Later ▶</button></div>
-      <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="val" id="rvVal">–</span><span class="row" style="flex-wrap:nowrap"><button id="rvSkip">Skip</button><button class="primary" id="rvSave">Save</button></span></div>
-    </div>
-    <div id="hRem" class="sheet" hidden>
-      <div id="hrTxt"></div>
-      <div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button id="hrLater">Later</button><button class="primary" id="hrGo">Re-measure</button></div>
-    </div>
-    <div id="calib" class="sheet" hidden>
-      <div id="cbTxt">Tap the feet of a person standing at the water's edge</div>
-      <div class="row" style="justify-content:space-between">
-        <label for="cbH" id="cbLbl" hidden>Their height <input id="cbH" type="number" min="1" max="250" step="1" value="165"> <span id="cbU">cm</span></label>
-        <span class="row" style="flex-wrap:nowrap;margin-left:auto"><button id="cbCancel">Cancel</button><button class="primary" id="cbApply" hidden>Apply</button></span>
+  </div>
+
+  <div id="app">
+    <div id="view">
+      <video id="camera" playsinline muted autoplay></video>
+      <canvas id="overlay"></canvas>
+
+      <div id="start">
+        <h1>Wave Gauge Live</h1>
+        <p>Keep the sea horizon in view and set how high your phone is above the water. The page finds the horizon and logs breaking waves by itself, or tap a wave's trough and crest.</p>
+        <button class="primary" id="start-camera">Start camera</button>
+        <p id="start-error"></p>
+      </div>
+
+      <div id="hint" hidden></div>
+      <div id="latest" hidden><div id="latest-height">–</div><div id="latest-label"></div></div>
+
+      <div id="review" class="sheet" hidden>
+        <div id="review-text"></div>
+        <div class="row nowrap" id="review-views" hidden>
+          <button id="review-prev">◀ Earlier</button>
+          <span id="review-view-index" class="muted grow center"></span>
+          <button id="review-next">Later ▶</button>
+        </div>
+        <div class="row nowrap spread">
+          <span class="value" id="review-height">–</span>
+          <span class="row nowrap"><button id="review-skip">Skip</button><button class="primary" id="review-save">Save</button></span>
+        </div>
+      </div>
+
+      <div id="reminder" class="sheet" hidden>
+        <div id="reminder-text"></div>
+        <div class="row nowrap end">
+          <button id="reminder-later">Later</button>
+          <button class="primary" id="reminder-go">Re-measure</button>
+        </div>
+      </div>
+
+      <div id="calibration" class="sheet" hidden>
+        <div id="calibration-text"></div>
+        <div class="row spread">
+          <label for="calibration-height" id="calibration-height-label" hidden>Their height
+            <input id="calibration-height" type="number" min="1" max="250" step="1" value="165">
+            <span id="calibration-unit">cm</span></label>
+          <span class="row nowrap push-right">
+            <button id="calibration-cancel">Cancel</button>
+            <button class="primary" id="calibration-apply" hidden>Apply</button>
+          </span>
+        </div>
       </div>
     </div>
+
+    <div id="bar">
+      <div class="row">
+        <label for="phone-height" class="slider-row">Phone height
+          <input id="phone-height" type="range" min="0.05" max="3" step="0.05" value="1.2">
+          <b id="phone-height-value">120 cm</b></label>
+        <button id="calibrate">Calibrate</button>
+        <button id="measure">Measure</button>
+      </div>
+      <div class="muted" id="height-message" hidden></div>
+      <div class="row">
+        <label for="lens">Lens <input id="lens" type="number" min="10" max="120" step="1" value="26"> mm</label>
+        <span class="muted">35 mm equivalent of the camera in use; 1× on most phones is 24–26</span>
+      </div>
+      <div class="row spread">
+        <span id="horizon-status" class="muted">Horizon: searching…</span>
+        <span id="auto-status" class="muted"></span>
+      </div>
+      <div class="row">
+        <button id="auto" aria-pressed="true">Auto</button>
+        <button id="confirm" aria-pressed="true">Confirm</button>
+        <button id="freeze">Freeze</button>
+        <button id="set-horizon" aria-pressed="false">Set horizon</button>
+        <button id="debug" aria-pressed="false">Debug</button>
+        <button id="undo" hidden>Remove last wave</button>
+        <span class="segmented" role="group" aria-label="Units">
+          <button id="unit-cm" aria-pressed="true">cm</button><button id="unit-ft" aria-pressed="false">ft</button>
+        </span>
+      </div>
+      <div class="stats">
+        <div><span>Waves</span><b id="wave-count">0</b></div>
+        <div><span>Average</span><b id="wave-average">–</b></div>
+        <div><span>Biggest third</span><b id="wave-biggest">–</b></div>
+      </div>
+      <div class="muted">Phone height counts from the still water level, not the sand. Use the 1× camera and hold the phone as still as you can.</div>
+    </div>
   </div>
-  <div id="bar">
-    <div class="row">
-      <label for="h" style="flex:1;display:flex;gap:10px;align-items:center;min-width:0">Phone height
-        <input id="h" type="range" min="0.05" max="3" step="0.05" value="1.2" style="flex:1;width:auto;min-width:0;padding:0">
-        <b id="hv" style="font-variant-numeric:tabular-nums;min-width:4.5em;text-align:right">120 cm</b></label>
-      <button id="calBtn">Calibrate</button>
-      <button id="arBtn">Measure</button>
-    </div>
-    <div class="muted" id="arMsg" hidden></div>
-    <div class="row">
-      <label for="lens">Lens <input id="lens" type="number" min="10" max="120" step="1" value="26"> mm</label>
-      <span class="muted">35 mm equivalent of the camera in use; 1× on most phones is 24–26</span>
-    </div>
-    <div class="row" style="justify-content:space-between"><span id="hzs" class="muted">Horizon: searching…</span><span id="as" class="muted"></span></div>
-    <div class="row">
-      <button id="auto" aria-pressed="true">Auto</button>
-      <button id="cfmBtn" aria-pressed="true">Confirm</button>
-      <button id="freeze">Freeze</button>
-      <button id="setHz" aria-pressed="false">Set horizon</button>
-      <button id="dbgBtn" aria-pressed="false">Debug</button>
-      <button id="undo" hidden>Remove last wave</button>
-      <span class="seg" role="group" aria-label="Units"><button id="uCm" aria-pressed="true">cm</button><button id="uFt" aria-pressed="false">ft</button></span>
-    </div>
-    <div class="stats">
-      <div><span>Waves</span><b id="n">0</b></div>
-      <div><span>Average</span><b id="avg">–</b></div>
-      <div><span>Biggest third</span><b id="max">–</b></div>
-    </div>
-    <div class="muted">Phone height counts from the still water level, not the sand. Use the 1× camera and hold the phone as still as you can.</div>
-  </div>
-</div>
-<script>
-const $=id=>document.getElementById(id),vid=$('vid'),cv=$('cv'),cx=cv.getContext('2d');
-const off=document.createElement('canvas'),ox=off.getContext('2d',{willReadFrequently:true});
-const rc=document.createElement('canvas'),rx=rc.getContext('2d',{willReadFrequently:true});
-let stream=null,frozen=false,manual=false,setting=false,tp=[],waves=[],hMeasured=null;
-const phoneH=()=>hMeasured??(+$('h').value||1.2);
-// Horizon lines are two normalised points [{x,y},{x,y}] in video coordinates (0..1, pixel edges).
-// hz = smoothed line for display; hzFrame = this snapshot's line, used for measuring.
-let hz=null,hzFrame=null,hzConf=0,hzTrack=null,trackMiss=0;
-// Debug overlay: everything each stage decided, captured per snapshot and drawn over the video
-let dbg=false;try{dbg=localStorage.getItem('debug')==='1';}catch{}
-const D={},dm=document.createElement('canvas'),dmx=dm.getContext('2d');  // hzTrack: the hand-picked horizon, followed frame to frame
+<script type="module">
+// Wave Gauge Live: measures breaking-wave heights from the phone camera.
+//
+// Every 150 ms the app takes one snapshot of the camera: it estimates how the camera moved, finds the horizon,
+// and looks for NEW white water, which is where a wave is breaking. A wave's height comes from where its trough
+// and crest sit below the horizon, the phone height and the lens.
+//
+// Sections, in order (each one only uses the ones above it):
+//   Settings                  preferences kept in this browser
+//   Numbers and text          cm / ft, surf labels, session stats, mean and median
+//   Reading pixels            the camera frame at analysis and full resolution
+//   Camera geometry           angles below the horizon, wave height and distance
+//   Horizon                   finding the sea horizon and following it
+//   Camera motion             how the camera moved between snapshots
+//   White water               white and newly white water, measured at full resolution
+//   Trough guess              where the trough is below a plunging lip
+//   Wave detector             breaking-wave events, false-positive checks, views of one wave
+//   Overlay drawing           coordinates, lines, marks, handles, magnifier
+//   Reviewing detected waves  views, handles, Save and Skip
+//   Calibration               phone height from a person of known height
+//   Height reminder           asks to re-measure when the phone height has probably changed
+//   AR drawing                grid, ring and normal post on the detected surface
+//   AR measurement            phone height from a WebXR hit test
+//   Debug view                masks, distance lines, horizon edges, numbers
+//   App                       the snapshot loop, drawing, taps, buttons and status texts
+//   Start                     finds the page elements and starts the app
+//
+// Points are normalised frame coordinates (0–1 across the camera frame); a horizon is [{x, y}, {x, y}].
+// For poking at it from the browser console, the app is window.waveGauge.
 
-function fit(){const r=cv.getBoundingClientRect();cv.width=r.width*devicePixelRatio;cv.height=r.height*devicePixelRatio;}
-function box(){const W=cv.width,H=cv.height,vw=vid.videoWidth||W,vh=vid.videoHeight||H,k=Math.min(W/vw,H/vh);return{x:(W-vw*k)/2,y:(H-vh*k)/2,w:vw*k,h:vh*k,vw,vh};}
-function toN(e){const r=cv.getBoundingClientRect(),b=box();return{x:((e.clientX-r.left)*devicePixelRatio-b.x)/b.w,y:((e.clientY-r.top)*devicePixelRatio-b.y)/b.h};}
-function toPx(p){const b=box();return[b.x+p.x*b.w,b.y+p.y*b.h];}
-const lum=(d,i)=>0.2*d[i]+0.5*d[i+1]+0.3*d[i+2]-0.25*(d[i+2]-d[i]);
+// ===== Settings ==================================================================================
 
-// ===== Geometry =====
-// Pinhole camera, principal point at the frame centre, focal length from the 35 mm-equivalent lens:
-// the 35 mm frame's long side (4:3 crop of the 43.3 mm diagonal) is 34.6 mm.
-function focalPx(){return (+$('lens').value||26)/34.6*Math.max(vid.videoWidth,vid.videoHeight);}
-// Depression angle (rad) of the ray through image point p, below TRUE horizontal.
-// The horizon line is back-projected to a plane through the camera (normal = K^T l);
-// the visible sea horizon lies below true horizontal by the dip, which is added back.
-function depression(p,line,f,dip){
-  const vw=vid.videoWidth,vh=vid.videoHeight,P=q=>[q.x*vw-vw/2,q.y*vh-vh/2,1];
-  const a=P(line[0]),b=P(line[1]);
-  const l=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
-  let n=[f*l[0],f*l[1],l[2]];
-  const probe=[(a[0]+b[0])/2,(a[1]+b[1])/2+50,f];               // a ray clearly below the line
-  if(n[0]*probe[0]+n[1]*probe[1]+n[2]*probe[2]<0)n=n.map(v=>-v);  // make n point "down"
-  const r=[p.x*vw-vw/2,p.y*vh-vh/2,f];
-  return Math.asin((n[0]*r[0]+n[1]*r[1]+n[2]*r[2])/(Math.hypot(...n)*Math.hypot(...r)))+dip;
-}
-// The trough of a breaking wave sits below still water (crest ~0.7·H above, trough ~0.3·H below).
-const TROUGH=0.3;
-// Camera at height h above still water, trough a·H below it, crest straight above the trough:
-//   D = (h + aH)/tan φt,  H = (h + aH)(1 − tan φc / tan φt)  →  H = h·r / (1 − a·r)
-function height(w){
-  if(!w.hz||!vid.videoWidth)return null;
-  const h=phoneH(),f=focalPx(),dip=1.76/60*Math.PI/180*Math.sqrt(h); // dip ≈ 1.76′·√h(m), incl. refraction
-  const pt=depression(w.p[0],w.hz,f,dip),pc=depression(w.p[1],w.hz,f,dip);
-  if(pt<=0.0005)return null;                 // trough on or above the horizon: not measurable
-  const r=1-Math.tan(pc)/Math.tan(pt);
-  if(r<=0)return 0;
-  const den=1-TROUGH*r;if(den<=0.2)return null;  // crest far above eye level: ill-conditioned
-  const H=h*r/den;w.D=(h+TROUGH*H)/Math.tan(pt);   // distance to the wave, shown in debug
-  return H;
+// Preferences kept in this browser. Storage can be unavailable (private mode, blocked site data):
+// then the defaults apply and changes only last for the session.
+
+function loadSetting(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : value;
+  } catch {
+    return fallback;
+  }
 }
 
-// ===== Horizon =====
-// One snapshot per tick: coarse horizon on a downscaled frame, refined at full resolution, then waves.
-function detect(){
-  if(frozen||calib||!stream||!vid.videoWidth)return;
-  const T0=performance.now();
-  const W=320,H=Math.round(W*vid.videoHeight/vid.videoWidth);off.width=W;off.height=H;
-  ox.drawImage(vid,0,0,W,H);const d=ox.getImageData(0,0,W,H).data;
-  // how far the picture moved since the last snapshot (hand shake), from brightness profiles
-  const n=W*H,Lm=new Float32Array(n),C=new Float32Array(W),R=new Float32Array(H);
-  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=(y*W+x)*4,l=(d[i]+2*d[i+1]+d[i+2])/4;Lm[y*W+x]=l;C[x]+=l/H;R[y]+=l/W;}
-  // camera motion since the last snapshot: block matching on textured patches (half resolution)
-  const W2=W>>1,H2=H>>1,L2=new Float32Array(W2*H2);
-  for(let y=0;y<H2;y++)for(let x=0;x<W2;x++){const j=2*y*W+2*x;L2[y*W2+x]=(Lm[j]+Lm[j+1]+Lm[j+W]+Lm[j+W+1])/4;}
-  const prevLine=hzFrame;let dx=0,dy=0,trackOK=true;
-  if(prevL2&&prevL2.length===L2.length){const m=blockMotion(L2,prevL2,W2,H2,prevLine?Math.round((prevLine[0].y+prevLine[1].y)/2*H2):Math.round(H2*.3));trackOK=m.ok;
-    if(m.ok){dx=m.dx*2;dy=m.dy*2;}}  // no confident consensus: assume still (vertical motion still comes from the horizon below)
-  prevL2=L2;prevC=C;prevR=R;
-  let line;
-  if(manual&&hzTrack){
-    // follow the picked horizon: predict it from the camera shift, then lock onto the edge nearest the prediction
-    const pred=hzTrack.map(p=>({x:p.x,y:p.y+dy/H}));
-    const fine=refineHorizon(pred,0.015);D.coarse=null;D.mode=fine?'following':'predicting';
-    if(fine){hzTrack=fine;trackMiss=0;}else{hzTrack=pred;trackMiss++;}
-    line=hzTrack;hzConf=trackMiss<20?1:0;hz=line;
-  }else{
-    line=findHorizon(d,W,H);D.coarse=line;D.mode='auto';
-    if(line){const fine=refineHorizon(line,0.025);if(fine)line=fine;}
-    if(line)hz=hz&&Math.abs(hz[0].y-line[0].y)<0.05?hz.map((p,i)=>({x:p.x,y:p.y*0.5+line[i].y*0.5})):line;
+function saveSetting(key, value) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // Not persisted; the setting still applies for this session.
   }
-  // vertical motion and roll from the horizon itself when it is found in both snapshots (sub-pixel)
-  let dRoll=0;
-  if(line&&prevLine){const mid=q=>(q[0].y+q[1].y)/2,sl=q=>Math.atan2((q[1].y-q[0].y)*vid.videoHeight,(q[1].x-q[0].x)*vid.videoWidth);
-    dy=Math.round((mid(line)-mid(prevLine))*H);dRoll=(sl(line)-sl(prevLine))*180/Math.PI;}
-  const gyroFast=gyroMax>45;gyroMax=0;
-  const moving=(trackOK&&Math.abs(dx)>W*0.15)||Math.abs(dy)>H*0.08||Math.abs(dRoll)>0.8||gyroFast;
-  D.moving=moving;D.track=trackOK;D.dRoll=dRoll;D.gyro=gyroFast;
-  hzFrame=line;
-  waveTick(d,W,H,Lm,dx,dy,moving);
-  D.ms=performance.now()-T0;D.rate=D.lastT?1000/(T0-D.lastT):0;D.lastT=T0;D.dx=dx;D.dy=dy;
-  status();
-}
-// Coarse: the TOPMOST strong brightness edge in five strips (sky meets sea before rocks, surf or sand do)
-function findHorizon(d,W,H){
-  const strip=(x0,x1)=>{const L=new Float32Array(H),G=new Float32Array(H);
-    for(let y=0;y<H;y++){let s=0;for(let x=x0;x<x1;x++)s+=lum(d,(y*W+x)*4);L[y]=s/(x1-x0);}
-    let mx=0;for(let y=3;y<H*0.85;y++){G[y]=Math.abs((L[y-3]+L[y-2]+L[y-1])-(L[y]+L[y+1]+L[y+2]))/3;mx=Math.max(mx,G[y]);}
-    if(mx<6)return null;
-    let y=3;while(y<H*0.85&&G[y]<mx*0.5)y++;
-    while(y+1<H*0.85&&G[y+1]>=G[y])y++;
-    return{x:(x0+x1)/2/W,y:(y-0.5)/H,g:G[y]};};
-  const pts=[];for(let i=0;i<5;i++){const r=strip(Math.round(W*(.05+i*.18)),Math.round(W*(.05+i*.18+.14)));if(r)pts.push(r);}
-  hzConf=0;if(pts.length<3)return null;
-  const med=[...pts].map(p=>p.y).sort((a,b)=>a-b)[pts.length>>1];
-  const inl=pts.filter(p=>Math.abs(p.y-med)<0.04);if(inl.length<3)return null;
-  hzConf=Math.min(...inl.map(p=>p.g));
-  return fitLine(inl);
-}
-function fitLine(pts){const n=pts.length,mx=pts.reduce((s,p)=>s+p.x,0)/n,my=pts.reduce((s,p)=>s+p.y,0)/n;
-  let sxy=0,sxx=0;pts.forEach(p=>{sxy+=(p.x-mx)*(p.y-my);sxx+=(p.x-mx)**2;});const k=sxx?sxy/sxx:0;
-  return[{x:.1,y:my+k*(.1-mx)},{x:.9,y:my+k*(.9-mx)}];}
-// Fine: in seven narrow strips, find the edge at full vertical resolution with sub-pixel peak interpolation
-function refineHorizon(line,bandFrac,src=vid){
-  const vw=src.videoWidth||src.width,vh=src.videoHeight||src.height,[A,B]=line,k=(B.y-A.y)/(B.x-A.x),band=Math.max(8,Math.round(vh*bandFrac)),pts=[];
-  for(let i=0;i<7;i++){
-    const xn=0.08+i*0.14,cy=Math.round((A.y+k*(xn-A.x))*vh),sy=Math.max(0,cy-band),sh=Math.min(vh,cy+band)-sy;
-    const sw=Math.max(4,Math.round(vw*0.06)),sx=Math.max(0,Math.min(vw-sw,Math.round(xn*vw-sw/2)));if(sh<10)continue;
-    rc.width=16;rc.height=sh;rx.drawImage(src,sx,sy,sw,sh,0,0,16,sh);
-    const d=rx.getImageData(0,0,16,sh).data,L=new Float32Array(sh),G=new Float32Array(sh);
-    for(let y=0;y<sh;y++){let s=0;for(let x=0;x<16;x++)s+=lum(d,(y*16+x)*4);L[y]=s/16;}
-    let mx=0;for(let y=2;y<sh-2;y++){G[y]=Math.abs((L[y+1]+L[y+2])-(L[y-1]+L[y-2]))/2;if(G[y]>mx)mx=G[y];}
-    if(mx<4)continue;
-    // up to three candidate edges per strip: an island or ship on the horizon makes a strong edge ABOVE the weaker sea edge
-    const cand=[];for(let y=3;y<sh-3;y++)if(G[y]>=G[y-1]&&G[y]>G[y+1]&&G[y]>=Math.max(4,mx*0.12))cand.push(y);
-    cand.sort((p,q)=>G[q]-G[p]);
-    const xs=(sx+sw/2)/vw,c3=cand.slice(0,3).map(y=>{const a=G[y-1],b=G[y],c=G[y+1],den=a-2*b+c,o=den?0.5*(a-c)/den:0;
-      return{x:xs,y:(sy+y+Math.max(-1,Math.min(1,o))+0.5)/vh,s:i};});
-    if(c3.length)pts.push(c3);
-  }
-  D.cands=pts.flat();D.keep=[];
-  if(pts.length<3)return null;
-  // consensus: try lines through candidate pairs from two strips; score = strips agreeing (within 1.2 px), then smallest residual
-  let keep=[],bestErr=1e9;
-  for(let i=0;i<pts.length;i++)for(let j=i+1;j<pts.length;j++)for(const a of pts[i])for(const b of pts[j]){
-    const kk=(b.y-a.y)/(b.x-a.x),inl=[];let err=0;
-    for(const strip of pts){let bp=null,be=1.2;for(const p of strip){const e=Math.abs(p.y-(a.y+kk*(p.x-a.x)))*vh;if(e<be){be=e;bp=p;}}if(bp){inl.push(bp);err+=be*be;}}
-    if(inl.length>keep.length||(inl.length===keep.length&&err<bestErr)){keep=inl;bestErr=err;}}
-  D.keep=keep;
-  return keep.length>=3?fitLine(keep):null;
 }
 
-// ===== Automatic wave detection =====
-// A breaking wave shows up as NEW whitewater where the water was blue a moment ago.
-// The background model follows hand shake by matching brightness profiles between snapshots.
-// Each detection is then re-measured at full camera resolution.
-// Block matching: 8 patches between the horizon and the bottom; each finds its best shift (content moved by +dx,+dy),
-// the median wins if most patches agree. Low-texture patches (sky, flat water) are skipped.
-let prevL2=null,gyroMax=0;
-function blockMotion(cur,prev,W,H,yTop){
-  const B=10,R=24,RY=6,res=[],y0=Math.max(B+RY,yTop+B);
-  for(const fy of [0.3,0.7])for(const fx of [0.14,0.38,0.62,0.86]){
-    const cy=Math.round(y0+(H-B-RY-y0)*fy),cx0=Math.round(W*fx);if(cy-B<0||cy+B>H)continue;
-    let s=0,s2=0;for(let y=cy-B;y<cy+B;y++)for(let x=cx0-B;x<cx0+B;x++){const v=cur[y*W+x];s+=v;s2+=v*v;}
-    const N=4*B*B,vr=s2/N-(s/N)**2;if(vr<25)continue;
-    let sad0=0;for(let y=-B;y<B;y++){const r=(cy+y)*W+cx0;for(let x=-B;x<B;x++)sad0+=Math.abs(cur[r+x]-prev[r+x]);}
-    let best=1e18,bx=0,by=0;
-    for(let oy=-RY;oy<=RY;oy++)for(let ox=-R;ox<=R;ox++){
-      const px0=cx0-ox,py0=cy-oy;if(px0-B<0||px0+B>W||py0-B<0||py0+B>H)continue;
-      let sad=0;for(let y=-B;y<B&&sad<best;y++){const r1=(cy+y)*W+cx0,r2=(py0+y)*W+px0;for(let x=-B;x<B;x++)sad+=Math.abs(cur[r1+x]-prev[r2+x]);}
-      if(sad<best){best=sad;bx=ox;by=oy;}}
-    if(best>0.85*sad0){bx=0;by=0;}   // a shifted match must be clearly better than "no motion" (noise, moving water)
-    res.push({dx:bx,dy:by});
-  }
-  if(res.length<3)return{dx:0,dy:0,ok:false};   // too little texture to tell
-  const med=a=>{const t=[...a].sort((p,q)=>p-q);return t[t.length>>1];},mdx=med(res.map(r=>r.dx)),mdy=med(res.map(r=>r.dy));
-  const agree=res.filter(r=>Math.abs(r.dx-mdx)<=2&&Math.abs(r.dy-mdy)<=2).length;
-  return{dx:mdx,dy:mdy,ok:agree>=3&&agree>=res.length*0.6};
+/** The user's preferences, loaded once at start-up. */
+function loadPreferences() {
+  return {
+    units: loadSetting('units', 'cm') === 'ft' ? 'ft' : 'cm',
+    confirm: loadSetting('confirm', '1') !== '0',
+    debug: loadSetting('debug', '0') === '1',
+  };
 }
-addEventListener('devicemotion',e=>{const r=e.rotationRate;if(r)gyroMax=Math.max(gyroMax,Math.hypot(r.alpha||0,r.beta||0,r.gamma||0));});
-let auto=true,bg=null,prevC=null,prevR=null,ev=null,cool=0,live=null,flashT=-1e9,pend=[],camX=0,hold=null,lastOffer=null;
-// camX: running sum of the camera's sideways shift, so detections can be compared in scene coordinates across pans
-// False-positive checks before a wave is logged: foam stays where the wave broke, while a gull, board or boat moves on,
-// and breaking white water spans metres along the crest.
-const STAY=0.3,STAY_AFTER=700,MIN_WIDTH=1.5,MIN_H=0.15;   // real breakers keep ~40–60 % of their white after 0.7 s, a passing gull ~0 %
-function blobWidthM(blob,W,H,L){let x0=W,x1=-1;for(let x=0;x<W;x++)if(blob.y1s[x]>=0){if(x<x0)x0=x;x1=x;}
-  const h=phoneH(),f=focalPx(),dip=1.76/60*Math.PI/180*Math.sqrt(h),pt=depression({x:(blob.x+.5)/W,y:(blob.y1+1)/H},L,f,dip);
-  if(pt<=0.0005)return Infinity;return (x1-x0+1)*vid.videoWidth/W*(h/Math.tan(pt))/f;}
-function bestShift(a,b,R){let best=0,bs=1e18;
-  for(let s=-R;s<=R;s++){let e=0,c=0;for(let i=Math.max(0,s);i<a.length+Math.min(0,s);i++){e+=Math.abs(a[i]-b[i-s]);c++;}e/=c;if(e<bs){bs=e;best=s;}}
-  return best;}
-function largestBlob(m,W,H){
-  const n=W*H,lab=new Int32Array(n),st=new Int32Array(n);let best=null,id=0;
-  for(let s0=0;s0<n;s0++){if(!m[s0]||lab[s0])continue;id++;let sp=0,area=0;st[sp++]=s0;lab[s0]=id;
-    while(sp){const j=st[--sp];area++;const x=j%W;
-      if(x>0&&m[j-1]&&!lab[j-1]){lab[j-1]=id;st[sp++]=j-1;}
-      if(x<W-1&&m[j+1]&&!lab[j+1]){lab[j+1]=id;st[sp++]=j+1;}
-      if(j>=W&&m[j-W]&&!lab[j-W]){lab[j-W]=id;st[sp++]=j-W;}
-      if(j<n-W&&m[j+W]&&!lab[j+W]){lab[j+W]=id;st[sp++]=j+W;}}
-    if(!best||area>best.area)best={id,area};}
-  if(!best)return null;
-  const y0=new Int16Array(W).fill(32767),y1=new Int16Array(W).fill(-1),pix=new Int32Array(best.area);let pn=0;
-  for(let j=0;j<n;j++)if(lab[j]===best.id){pix[pn++]=j;const x=j%W,y=(j/W)|0;if(y<y0[x])y0[x]=y;if(y>y1[x])y1[x]=y;}
-  let bx=-1,ext=0;for(let x=0;x<W;x++)if(y1[x]>=0&&y1[x]-y0[x]+1>ext){ext=y1[x]-y0[x]+1;bx=x;}
-  return{area:best.area,x:bx,y0:y0[bx],y1:y1[bx],ext,y0s:y0,y1s:y1,pix};}
-// Re-measure a detected blob on the full-resolution frame, inside the coarse box ±1 cell.
-function refineWave(b,W,H,thr){
-  const vw=vid.videoWidth,vh=vid.videoHeight;
-  const sx=Math.max(0,Math.floor((b.x-3)/W*vw)),ex=Math.min(vw,Math.ceil((b.x+4)/W*vw));
-  const sy=Math.max(0,Math.floor((b.y0-1)/H*vh)),ey=Math.min(vh,Math.ceil((b.y1+2)/H*vh));
-  const sw=ex-sx,sh=ey-sy;if(sw<2||sh<2)return null;
-  rc.width=sw;rc.height=sh;rx.drawImage(vid,sx,sy,sw,sh,0,0,sw,sh);const d=rx.getImageData(0,0,sw,sh).data;
-  const white=(x,y)=>{const j=(y*sw+x)*4,mx=Math.max(d[j],d[j+1],d[j+2]),mn=Math.min(d[j],d[j+1],d[j+2]);return mx>thr&&mx-mn<60;};
-  const mid=Math.round((b.y0+b.y1+1)/2/H*vh)-sy,gap=Math.max(2,Math.round(sh*0.03)),res=[];
-  for(let x=0;x<sw;x++){
-    let s=-1;for(let r=0;r<sh;r++){const a=mid-r,c=mid+r;if(a<0&&c>=sh)break;if(a>=0&&a<sh&&white(x,a)){s=a;break;}if(c>=0&&c<sh&&white(x,c)){s=c;break;}}
-    if(s<0)continue;
-    let t=s,g=0;for(let y=s-1;y>=0;y--){if(white(x,y)){t=y;g=0;}else if(++g>gap)break;}
-    let bo=s;g=0;for(let y=s+1;y<sh;y++){if(white(x,y)){bo=y;g=0;}else if(++g>gap)break;}
-    res.push({x,t,b:bo,e:bo-t+1});
-  }
-  if(!res.length)return null;
-  res.sort((p,q)=>p.e-q.e);const r=res[Math.floor((res.length-1)*0.8)];   // 80th percentile column: robust to stray pixels
-  const xn=(sx+r.x+0.5)/vw;
-  D.wref={x:sx/vw,y:sy/vh,w:sw/vw,h:sh/vh,col:xn,top:(sy+r.t)/vh,bot:(sy+r.b+1)/vh,t:performance.now()};
-  return[{x:xn,y:(sy+r.b+1)/vh},{x:xn,y:(sy+r.t)/vh}];                 // [trough (bottom edge), crest (top edge)]
+
+// ===== Numbers and text ==========================================================================
+
+// Turning metres into text, and summarising a session's waves.
+
+const FEET_PER_METRE = 3.281;
+
+/** "142 cm" or "4.7 ft". */
+function formatLength(metres, units) {
+  return units === 'ft'
+    ? `${(metres * FEET_PER_METRE).toFixed(1)} ft`
+    : `${Math.round(metres * 100)} cm`;
 }
-function waveTick(d,W,H,Lm,dx,dy,moving){
-  const n=W*H,L=hzFrame;
-  // follow the camera shift for events waiting to be checked
-  camX+=dx;if(ev){ev.sx+=dx;ev.sy+=dy;}for(const e of pend){e.sx+=dx;e.sy+=dy;}
-  if(hold&&performance.now()>hold.until)flushHold();
-  if(moving&&auto&&L){bg=null;ev=null;live=null;D.maskOn=false;D.blob=null;D.state='camera moving, paused';return;}
-  if(!auto||!L){if(!auto||!hz){bg=null;ev=null;pend=[];}live=null;D.maskOn=false;D.blob=null;D.state=!auto?'auto off':'no horizon';return;}
-  const[A,B]=L,k=(B.y-A.y)/(B.x-A.x),gap=Math.round(H*.015),top=new Int16Array(W);
-  for(let x=0;x<W;x++)top[x]=Math.min(H,Math.max(1,Math.ceil((A.y+k*((x+.5)/W-A.x))*H)+gap));
-  // whiteness threshold adapts to how bright the water is
-  let s=0,c=0;for(let x=0;x<W;x+=2)for(let y=top[x];y<H;y+=2){s+=Lm[y*W+x];c++;}
-  const thr=Math.min(230,Math.max(140,(c?s/c:120)+70));D.thr=thr;
-  const mask=new Uint8Array(n);
-  for(let x=0;x<W;x++)for(let y=top[x];y<H;y++){const j=y*W+x,i=j*4,mx=Math.max(d[i],d[i+1],d[i+2]),mn=Math.min(d[i],d[i+1],d[i+2]);if(mx>thr&&mx-mn<60)mask[j]=1;}
-  if(!bg||bg.length!==n){bg=Float32Array.from(mask);return;}
-  if(dx||dy){const nb=new Float32Array(n).fill(1);
-    for(let y=0;y<H;y++){const sy=y-dy;if(sy<0||sy>=H)continue;for(let x=0;x<W;x++){const sx=x-dx;if(sx>=0&&sx<W)nb[y*W+x]=bg[sy*W+sx];}}bg=nb;}
-  // new whitewater: white now, and nothing white within one cell in the recent background
-  const nw=new Uint8Array(n);
-  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const j=y*W+x;if(!mask[j])continue;let m=0;
-    for(let oy=-W;oy<=W;oy+=W)for(let o=-1;o<=1;o++){const v=bg[j+oy+o];if(v>m)m=v;}
-    if(m<0.25)nw[j]=1;}
-  if(dbg){if(dm.width!==W||dm.height!==H){dm.width=W;dm.height=H;}const im=dmx.createImageData(W,H),q=im.data;
-    for(let j=0;j<n;j++){const o=j*4;if(nw[j]){q[o]=255;q[o+1]=60;q[o+2]=210;q[o+3]=230;}else if(mask[j]){q[o]=0;q[o+1]=210;q[o+2]=255;q[o+3]=120;}}
-    dmx.putImageData(im,0,0);D.maskOn=true;}
-  const blob=largestBlob(nw,W,H),now=performance.now(),minA=Math.max(20,n*0.0004);
-  let isNew=false;
-  if(blob&&blob.area>=minA&&blob.ext>=3){
-    // reject whitewater that only grows out of old foam on its seaward side (a rolling bore, not a new break)
-    let cols=0,touch=0;
-    for(let x=0;x<W;x++){if(blob.y1s[x]<0)continue;cols++;let t=0;
-      for(let r=1;r<=3;r++){const y=blob.y0s[x]-r;if(y>=0&&bg[y*W+x]>0.5)t=1;}touch+=t;}
-    isNew=touch/cols<0.5;
+
+/** Like formatLength, with a dash for "no value yet". */
+function formatMaybe(metres, units) {
+  return metres == null ? '–' : formatLength(metres, units);
+}
+
+/** A length typed in the current units, in metres. */
+function toMetres(value, units) {
+  return units === 'ft' ? value / FEET_PER_METRE : value / 100;
+}
+
+/** Surfers' words for a wave face height. */
+function surfLabel(metres) {
+  if (metres == null) return '';
+  const feet = metres * FEET_PER_METRE;
+  if (feet < 1.5) return 'ankle–knee';
+  if (feet < 2.5) return 'knee–thigh';
+  if (feet < 3.5) return 'waist high';
+  if (feet < 4.5) return 'chest high';
+  if (feet < 5.5) return 'shoulder high';
+  if (feet < 7) return 'head high';
+  return 'overhead';
+}
+
+/** Count, average, mean of the biggest third (how surfers size a session) and the latest height. */
+function summarize(heights) {
+  if (!heights.length) return { count: 0, average: null, biggestThird: null, latest: null };
+  const largestFirst = [...heights].sort((a, b) => b - a);
+  const biggestThird = largestFirst.slice(0, Math.max(1, Math.ceil(heights.length / 3)));
+  return {
+    count: heights.length,
+    average: mean(heights),
+    biggestThird: mean(biggestThird),
+    latest: heights[heights.length - 1],
+  };
+}
+
+function mean(values) {
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+function median(values) {
+  return [...values].sort((a, b) => a - b)[values.length >> 1];
+}
+
+// ===== Reading pixels ============================================================================
+
+// Reading pixels from the camera <video> or from a snapshot <canvas>.
+//
+// Each analysis step works on the frame downscaled to ANALYSIS_WIDTH ("analysis pixels");
+// measurements that need precision go back to the full-resolution frame.
+
+const ANALYSIS_WIDTH = 320;
+
+const scratch = document.createElement('canvas');
+const scratchContext = scratch.getContext('2d', { willReadFrequently: true });
+
+/** Pixel size of a video or canvas. */
+function frameSize(source) {
+  return {
+    width: source.videoWidth || source.width,
+    height: source.videoHeight || source.height,
+  };
+}
+
+/** RGBA pixels of a region of the source, resampled to outWidth × outHeight. */
+function readPixels(source, x, y, width, height, outWidth = width, outHeight = height) {
+  scratch.width = outWidth;
+  scratch.height = outHeight;
+  scratchContext.drawImage(source, x, y, width, height, 0, 0, outWidth, outHeight);
+  return scratchContext.getImageData(0, 0, outWidth, outHeight).data;
+}
+
+/** The whole frame downscaled to `width`, aspect kept: { data, width, height }. */
+function downscale(source, width = ANALYSIS_WIDTH) {
+  const size = frameSize(source);
+  const height = Math.round(width * size.height / size.width);
+  return { data: readPixels(source, 0, 0, size.width, size.height, width, height), width, height };
+}
+
+/** Brightness of each pixel, (R + 2G + B) / 4. */
+function brightness(image) {
+  const { data } = image;
+  const out = new Float32Array(image.width * image.height);
+  for (let j = 0; j < out.length; j++) {
+    const i = j * 4;
+    out[j] = (data[i] + 2 * data[i + 1] + data[i + 2]) / 4;
   }
-  D.blob=null;
-  if(blob){let x0=W,x1=-1,y0=H,y1=-1;for(let x=0;x<W;x++)if(blob.y1s[x]>=0){x0=Math.min(x0,x);x1=x;y0=Math.min(y0,blob.y0s[x]);y1=Math.max(y1,blob.y1s[x]);}
-    D.blob={x:x0/W,y:y0/H,w:(x1-x0+1)/W,h:(y1-y0+1)/H};}
-  D.state=!blob?'no new white':(blob.area<minA||blob.ext<3)?'too small ('+blob.area+' px)':!isNew?'old foam, ignored':now<=cool?'new, cooldown':'NEW WAVE';
-  for(let j=0;j<n;j++)bg[j]=bg[j]*0.95+mask[j]*0.05;
-  live=null;
-  if(isNew&&now>cool){
-    if(!ev)ev={t0:now,frames:0,best:null,S0:blob.pix,sx:0,sy:0,wmax:0,trk:[]};
-    ev.frames++;ev.last=now;ev.wmax=Math.max(ev.wmax,blobWidthM(blob,W,H,L));
-    {let top=H,bot=-1;for(let x=0;x<W;x++)if(blob.y1s[x]>=0){if(blob.y0s[x]<top)top=blob.y0s[x];if(blob.y1s[x]>bot)bot=blob.y1s[x];}
-     ev.trk.push({top:top-ev.sy,bot:bot-ev.sy,ext:blob.ext});}   // white region's edges in steadied coordinates
-    // share of a 2-px ring around the patch that was already white: high inside churning foam, low for a fresh break in blue water
-    let ring=0,rw=0;{const inB=new Uint8Array(n);for(const j of blob.pix)inB[j]=1;
-      for(const j of blob.pix){const x=j%W,y=(j/W)|0;for(const[ox,oy]of[[2,0],[-2,0],[0,2],[0,-2]]){const xx=x+ox,yy=y+oy;if(xx<0||xx>=W||yy<0||yy>=H)continue;const k=yy*W+xx;if(inB[k])continue;ring++;if(bg[k]>0.5)rw++;}}}
-    ev.foamMax=Math.max(ev.foamMax||0,ring?rw/ring:0);
-    if(!ev.best||(blob.ext>ev.best.ext&&now-ev.t0<=800)){   // within 0.8 s: before spray inflates the crest and foam hides the face
-      const fine=refineWave(blob,W,H,thr),x=(blob.x+.5)/W;
-      ev.best={ext:blob.ext,p:fine||[{x,y:(blob.y1+1)/H},{x,y:blob.y0/H}],hz:L.map(q=>({...q}))};
-      ev.Sb=blob.pix;ev.bsx=ev.sx;ev.bsy=ev.sy;ev.tb=now;ev.best.snap=grab();ev.best.gx=blob.x+0.5-camX;
+  return out;
+}
+
+/** A still copy of the current frame (kept for reviewing a wave or calibrating). */
+function snapshot(source) {
+  const size = frameSize(source);
+  const canvas = document.createElement('canvas');
+  canvas.width = size.width;
+  canvas.height = size.height;
+  canvas.getContext('2d').drawImage(source, 0, 0);
+  return canvas;
+}
+
+// ===== Camera geometry ===========================================================================
+
+// Camera geometry: from points in the frame to angles, heights and distances.
+//
+// Points are normalised frame coordinates: x and y run from 0 to 1 across the camera frame.
+// A horizon is a line through two such points, [{x, y}, {x, y}].
+// The camera is a pinhole with its principal point at the frame centre; the visible sea horizon
+// tells which way is level, so the result doesn't depend on how the phone is tilted.
+
+/** The trough of a breaking wave sits about 0.3·H below still water (the crest about 0.7·H above). */
+const TROUGH_DEPTH = 0.3;
+
+/** Long side of a 35 mm-equivalent frame cropped to 4:3 (the diagonal is 43.3 mm). */
+const FULL_FRAME_LONG_SIDE_MM = 34.6;
+
+/** Below this angle (rad) under the horizon, a point is too close to the horizon to measure. */
+const MIN_DEPRESSION = 0.0005;
+
+function focalLengthPx(lensMm, frameWidth, frameHeight) {
+  return lensMm / FULL_FRAME_LONG_SIDE_MM * Math.max(frameWidth, frameHeight);
+}
+
+/** The visible sea horizon lies below true horizontal by about 1.76′·√h (h in metres), refraction included. */
+function horizonDip(phoneHeight) {
+  return 1.76 / 60 * Math.PI / 180 * Math.sqrt(phoneHeight);
+}
+
+/** Height of the horizon line at frame position x. */
+function horizonY(horizon, x) {
+  const [a, b] = horizon;
+  return a.y + (b.y - a.y) / (b.x - a.x) * (x - a.x);
+}
+
+/**
+ * One camera setup: frame size in pixels, focal length in pixels, phone height above still water in metres.
+ */
+class View {
+  constructor({ width, height, focal, phoneHeight }) {
+    this.width = width;
+    this.height = height;
+    this.focal = focal;
+    this.phoneHeight = phoneHeight;
+    this.dip = horizonDip(phoneHeight);
+  }
+
+  /** The same camera at a different phone height. */
+  atHeight(phoneHeight) {
+    return new View({ width: this.width, height: this.height, focal: this.focal, phoneHeight });
+  }
+
+  /**
+   * Angle (rad) of the ray through point p below TRUE horizontal.
+   * The horizon line is back-projected to a plane through the camera (normal = Kᵀ·l);
+   * the visible horizon sits below true horizontal by the dip, which is added back.
+   */
+  depression(p, horizon) {
+    const a = this.imagePoint(horizon[0]);
+    const b = this.imagePoint(horizon[1]);
+    const line = cross(a, b);
+    let normal = [this.focal * line[0], this.focal * line[1], line[2]];
+    const below = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 + 50, this.focal];   // a ray clearly below the horizon
+    if (dot(normal, below) < 0) normal = normal.map(v => -v);                 // make the normal point "down"
+    const ray = this.ray(p);
+    return Math.asin(dot(normal, ray) / (norm(normal) * norm(ray))) + this.dip;
+  }
+
+  /**
+   * Height and distance of a wave from its trough and crest (crest straight above the trough).
+   * Camera at height h above still water, trough a·H below it:
+   *   D = (h + aH) / tan φt,   H = (h + aH)(1 − tan φc / tan φt)   →   H = h·r / (1 − a·r),  r = 1 − tan φc / tan φt
+   * Returns { height, distance } in metres, or null when the points can't be measured.
+   */
+  measureWave(trough, crest, horizon) {
+    const troughAngle = this.depression(trough, horizon);
+    if (troughAngle <= MIN_DEPRESSION) return null;                 // trough on or above the horizon
+    const r = 1 - Math.tan(this.depression(crest, horizon)) / Math.tan(troughAngle);
+    if (r <= 0) return { height: 0, distance: null };              // crest drawn below the trough
+    const denominator = 1 - TROUGH_DEPTH * r;
+    if (denominator <= 0.2) return null;                           // crest far above eye level: ill-conditioned
+    const height = this.phoneHeight * r / denominator;
+    const distance = (this.phoneHeight + TROUGH_DEPTH * height) / Math.tan(troughAngle);
+    return { height, distance };
+  }
+
+  /** Distance (m) across still water to the point p on the water, or Infinity at the horizon. */
+  waterDistance(p, horizon) {
+    const angle = this.depression(p, horizon);
+    return angle <= MIN_DEPRESSION ? Infinity : this.phoneHeight / Math.tan(angle);
+  }
+
+  /** Width in metres of something `pixels` wide (frame pixels) at `distance` metres. */
+  widthAt(pixels, distance) {
+    return pixels * distance / this.focal;
+  }
+
+  /** Points along the water at `distance` metres, at x = 0, 1/8, … 1 (fewer where off-screen). */
+  pointsAtDistance(distance, horizon) {
+    const target = Math.atan(this.phoneHeight / distance);
+    if (target <= this.dip) return [];
+    const points = [];
+    for (let i = 0; i <= 8; i++) {
+      const x = i / 8;
+      let above = horizonY(horizon, x), below = 1;
+      if (this.depression({ x, y: below }, horizon) < target) continue;   // that distance is below the frame here
+      for (let step = 0; step < 22; step++) {
+        const y = (above + below) / 2;
+        if (this.depression({ x, y }, horizon) < target) above = y; else below = y;
+      }
+      points.push({ x, y: below });
     }
-    live=ev.best.p;
+    return points;
   }
-  if(ev&&(now-ev.t0>1500||now-ev.last>500)){
-    if(ev.frames>=2){ev.checkAt=Math.max(now,ev.tb+STAY_AFTER);ev.S0=ev.Sb;ev.sx-=ev.bsx;ev.sy-=ev.bsy;pend.push(ev);}
-    ev=null;
+
+  /** Camera roll and downward pitch in degrees, from the horizon. */
+  angles(horizon) {
+    const [a, b] = horizon;
+    return {
+      roll: Math.atan2((b.y - a.y) * this.height, (b.x - a.x) * this.width) * 180 / Math.PI,
+      pitch: this.depression({ x: 0.5, y: 0.5 }, horizon) * 180 / Math.PI,
+    };
   }
-  const reject=r=>{D.ign=(D.ign||0)+1;D.lastReject={reason:r,t:now};};
-  pend=pend.filter(e=>{
-    if(now<e.checkAt)return true;
-    // best overlap in a small window around the predicted spot: absorbs shake-estimate drift (±4 px)
-    // and foam creeping toward the shore (down to +10 px); a gull or board that moved on scores near 0
-    let frac=0,inside=0;
-    for(let oy=-4;oy<=10;oy++)for(let ox=-4;ox<=4;ox++){let ins=0,st=0;
-      for(const j of e.S0){const x=j%W+e.sx+ox,y=((j/W)|0)+e.sy+oy;if(x<0||x>=W||y<0||y>=H)continue;ins++;if(mask[y*W+x])st++;}
-      if(ins>=e.S0.length*0.5&&st/ins>frac){frac=st/ins;inside=ins;}}
-    const T=e.trk,dTop=T.length?T[T.length-1].top-T[0].top:0,dBot=T.length?T[T.length-1].bot-T[0].bot:0,extM=Math.max(1,...T.map(q=>q.ext));
-    (D.checks=D.checks||[]).push({t:now,foam:+(e.foamMax||0).toFixed(2),frac:+frac.toFixed(2),w:+e.wmax.toFixed(1),dTop,dBot,ext:extM,n:T.length,cm:Math.round((height({p:e.best.p,hz:e.best.hz})||0)*100),x:+e.best.p[0].x.toFixed(2),yb:+e.best.p[0].y.toFixed(3),yt:+e.best.p[1].y.toFixed(3)});
-    // a wave that left the view (usually a pan) can't be double-checked: with Confirm on, the user decides
-    const left=!inside,note=left?"Couldn't double-check this one: it left the view.":null;
-    if(left&&!confirmOn)reject('left the frame');
-    else if(!left&&frac<STAY)reject(`moved away (${Math.round(frac*100)}% stayed)`);
-    else if(dTop>Math.max(6,0.5*extM)||dBot>Math.max(12,extM))reject('slid toward the shore (swash or rolling foam)');
-    else if(e.wmax<MIN_WIDTH)reject(`too narrow (${e.wmax.toFixed(1)} m)`);
-    else{const w={p:e.best.p,hz:e.best.hz,m:null,auto:true,snap:e.best.snap,note,t0:e.t0};w.m=height(w);
-      if(w.m==null)reject('could not measure');
-      else if(w.m<MIN_H)reject(`too small (${Math.round(w.m*100)} cm)`);
-      else{const gx=e.best.gx,same=(a)=>a&&Math.abs(gx-a.gx)<W*0.6&&Math.abs(e.t0-a.t0)<4000;   // a peeling wave breaks along its length: same wave
-        if(same(lastOffer))reject('same wave as the last one');
-        else if(same(hold)){hold.views.push(w);reject('same wave, added as another view');}
-        else{if(hold)flushHold();hold={gx,t0:e.t0,until:now+2500,views:[w]};}}}
-    return false;
-  });
+
+  imagePoint(p) {
+    return [p.x * this.width - this.width / 2, p.y * this.height - this.height / 2, 1];
+  }
+
+  ray(p) {
+    return [p.x * this.width - this.width / 2, p.y * this.height - this.height / 2, this.focal];
+  }
 }
 
-// ===== Freeze and confirm =====
-// A detected wave is shown frozen at its biggest moment with crest/trough handles; the user nudges them and saves.
-let confirmOn=true;try{confirmOn=localStorage.getItem('confirm')!=='0';}catch{}
-let review=null,reviewQ=[],calib=null,drag=null;
-function grab(){const c=document.createElement('canvas');c.width=vid.videoWidth;c.height=vid.videoHeight;c.getContext('2d').drawImage(vid,0,0);return c;}
-function horizonOf(src){const keep=hzConf,W=320,H=Math.round(W*src.height/src.width);off.width=W;off.height=H;ox.drawImage(src,0,0,W,H);
-  let L=findHorizon(ox.getImageData(0,0,W,H).data,W,H);if(L){const f=refineHorizon(L,0.025,src);if(f)L=f;}hzConf=keep;return L;}
-// Auto mode measures white water; on a plunging wave the white is only the lip. Look below it for the dark face
-// and put the trough where the face meets the brighter foam or water in front.
-function guessTrough(snap,p){
-  const vw=snap.width,vh=snap.height,x=Math.round(p[0].x*vw),yb=Math.round(p[0].y*vh),yt=Math.round(p[1].y*vh),ext=Math.max(6,yb-yt);
-  const y1=Math.min(vh-1,yb+ext*4+30),n=y1-yt,sw=9,x0=Math.max(0,Math.min(vw-sw,x-4));if(n<12)return p[0];
-  const d=snap.getContext('2d').getImageData(x0,yt,sw,n).data,Lc=new Float32Array(n),Bc=new Float32Array(n),S=new Float32Array(n),BR=new Float32Array(n);
-  for(let y=0;y<n;y++){let s=0,t=0;for(let k=0;k<sw;k++){const i=(y*sw+k)*4;s+=0.3*d[i]+0.59*d[i+1]+0.11*d[i+2];t+=d[i+2]-d[i];}Lc[y]=s/sw;Bc[y]=t/sw;}
-  for(let y=0;y<n;y++){let s=0,t=0,c=0;for(let k=-2;k<=2;k++){const j=y+k;if(j>=0&&j<n){s+=Lc[j];t+=Bc[j];c++;}}S[y]=s/c;BR[y]=t/c;}
-  const o=yb-yt;let lip=S[0];for(let y=0;y<Math.max(1,o);y++)lip=Math.max(lip,S[y]);
-  // lowest point within 3 lip-heights below the lip where a clearly dark stretch (the face or the inside of the curl,
-  // < 60 % of the lip's brightness) turns sharply brighter (foam or water in front). The window keeps it off the beach.
-  let pick=-1;for(let y=o;y<=Math.min(n-7,o+ext*3);y++)if(S[y]<0.6*lip&&S[y+6]-S[y]>=30)pick=y;
-  if(pick<0)return p[0];
-  let g=pick+1,bg=-1e9;for(let y=pick;y<pick+6;y++){const dd=S[y+1]-S[y];if(dd>bg){bg=dd;g=y+1;}}
-  return{x:p[0].x,y:(yt+g)/vh};
-}
-// one review per wave; every detection of it is a view, earliest first (face still visible, before spray)
-function flushHold(){const v=hold.views.sort((a,b)=>a.t0-b.t0),w=v[0];w.views=v;lastOffer={gx:hold.gx,t0:hold.t0};hold=null;offerWave(w);}
-function showView(i){review.vi=i;const v=review.views[i];if(!v.guessed){v.p=[guessTrough(v.snap,v.p),{...v.p[1]}];v.guessed=true;}
-  review.cur=v;$('rvViews').hidden=review.views.length<2;$('rvIdx').textContent=`view ${i+1} of ${review.views.length}`;
-  $('rvPrev').disabled=i===0;$('rvNext').disabled=i===review.views.length-1;updateReview();}
-function offerWave(w){
-  if(!confirmOn||!w.snap){w.snap=null;waves.push(w);flashT=performance.now();stats();return;}
-  reviewQ.push(w);if(!review)nextReview();
-}
-function nextReview(){
-  review=reviewQ.shift()||null;$('review').hidden=!review;
-  if(review){if(!review.views)review.views=[review];showView(0);}
-  status();
-}
-function updateReview(){const v=review.cur,m=height(v);
-  $('rvTxt').textContent=(v.note?v.note+' Skip it if it isn’t a breaking wave. ':'')+'Drag the handles onto the crest and trough'+(review.views.length>1?', on the view where the wave is clearest.':'.')+(reviewQ.length?` (${reviewQ.length} more waiting)`:'');
-  $('rvVal').textContent=m==null?'Trough must be below the horizon':fmtLen(m)+(v.D!=null?'  @ '+v.D.toFixed(0)+' m':'');}
-// ===== Calibrate phone height from a person of known height =====
-// Feet assumed at the water's edge: D = h/tan(φfeet), head height = h·(1 − tan φhead / tan φfeet)  →  solve for h.
-function solveH(pts,L,ref){
-  const[a,b]=pts[0].y>pts[1].y?pts:[pts[1],pts[0]];let h=1.2;
-  for(let it=0;it<5;it++){const f=focalPx(),dip=1.76/60*Math.PI/180*Math.sqrt(h),pf=depression(a,L,f,dip),ph=depression(b,L,f,dip);
-    if(pf<=0.0005)return null;const k=1-Math.tan(ph)/Math.tan(pf);if(k<=0.02)return null;h=ref/k;}
+/**
+ * Phone height from a person of known height standing at the water's edge (feet at still-water level):
+ *   D = h / tan φfeet,   their height = h·(1 − tan φhead / tan φfeet)   →   solve for h.
+ * The dip depends on h, so this iterates a few times. Returns metres, or null if it can't be solved.
+ */
+function phoneHeightFromPerson(view, feet, head, horizon, personHeight) {
+  let h = view.phoneHeight;
+  for (let i = 0; i < 5; i++) {
+    const v = view.atHeight(h);
+    const feetAngle = v.depression(feet, horizon);
+    if (feetAngle <= MIN_DEPRESSION) return null;
+    const ratio = 1 - Math.tan(v.depression(head, horizon)) / Math.tan(feetAngle);
+    if (ratio <= 0.02) return null;
+    h = personHeight / ratio;
+  }
   return h;
 }
-const refMeters=()=>{const v=+$('cbH').value;return units==='ft'?v/3.281:v/100;};
-function calibPreview(){const L=calib.hz,h=L&&calib.pts.length===2?solveH(calib.pts,L,refMeters()):null;
-  $('cbTxt').textContent=h?`Phone height would be ${fmtLen(h)}. Drag the dots onto feet and head if needed.`:'Feet must be below the horizon. Drag the dots onto feet and head.';}
-function startCalib(){
-  if(!stream||review)return;const snap=grab(),L=horizonOf(snap)||hzFrame||hz;
-  if(!L){$('arMsg').textContent='Calibrate needs the horizon in view.';$('arMsg').hidden=false;return;}
-  calib={snap,hz:L,pts:[]};$('calib').hidden=false;$('cbLbl').hidden=true;$('cbApply').hidden=true;
-  $('cbU').textContent=units;$('cbH').value=units==='ft'?'5.4':'165';$('cbH').step=units==='ft'?'0.1':'1';
-  $('cbTxt').textContent="Tap the feet of a person standing at the water's edge";status();
-}
-function endCalib(){calib=null;$('calib').hidden=true;bg=null;prevL2=null;prevC=null;ev=null;status();}
-function nearest(pts,p){let bi=0,bd=1e9;pts.forEach((q,i)=>{const dd=Math.hypot((q.x-p.x)*cv.width,(q.y-p.y)*cv.height);if(dd<bd){bd=dd;bi=i;}});return bi;}
-// ===== Height reminder =====
-// Every reading scales with phone height, so the page asks to re-measure when it has probably changed:
-// not set yet, the phone was raised or lowered by more than 20 cm, you walked, or 20 minutes passed (tide).
-// Vertical moves are estimated from the accelerometer: integrate upward acceleration during a short move,
-// assume the phone is at rest again when the move ends (zero-velocity reset), add up the net change.
-const HREM={time:20*60e3,snooze:15*60e3,dz:0.20};
-let hSetAt=null,hSnoozeUntil=0,zNet=0,mv=null,up=null,remKind=null,remDismissed={};
-function hSet(){hSetAt=performance.now();zNet=0;mv=null;remKind=null;remDismissed={};status();}
-function remind(kind){if(remDismissed[kind]||review||calib)return;
-  const rank={notset:0,time:1,moved:2,drift:2};if(remKind&&rank[remKind]>rank[kind])return;remKind=kind;status();}
-function onMotion(e){
-  const g=e.accelerationIncludingGravity,a=e.acceleration;if(!g||g.x==null||!a||a.x==null)return;   // needs gravity-free acceleration
-  const dt=Math.min(0.1,Math.max(0.001,(e.interval||16)/1000));
-  if(!up)up={x:g.x,y:g.y,z:g.z};else{const k=Math.min(1,dt*1.5);up.x+=k*(g.x-up.x);up.y+=k*(g.y-up.y);up.z+=k*(g.z-up.z);}
-  const un=Math.hypot(up.x,up.y,up.z)||9.81,av=(a.x*up.x+a.y*up.y+a.z*up.z)/un;   // upward linear acceleration (m/s²)
-  if(!mv){if(Math.abs(av)>0.6)mv={t:0,v:av*dt,z:0,quiet:0};return;}
-  mv.t+=dt;mv.v+=av*dt;mv.z+=mv.v*dt;mv.quiet=Math.abs(av)<0.3?mv.quiet+dt:0;
-  if(mv.quiet>=0.3||mv.t>4){const m=mv;mv=null;
-    if(m.t>2){if(hSetAt!=null)remind('moved');}          // long, sustained motion: walking or moving around
-    else{zNet+=m.z;D.zNet=zNet;if(hSetAt!=null&&Math.abs(zNet)>HREM.dz)remind('drift');}}
-}
-addEventListener('devicemotion',onMotion);
-function remText(){const ar=arSupported;
-  return remKind==='notset'?`Readings assume your phone is ${fmtLen(phoneH())} above the water. Set your real height first: ${ar?'Measure aims at the water’s edge':'Calibrate uses a person of known height'}, or use the slider.`:
-    remKind==='time'?'20 minutes since you set the height. The tide may have moved the water level.':
-    remKind==='moved'?'You moved around. If you’re at a new spot or holding the phone differently, re-measure.':
-    remKind==='drift'?`The phone seems about ${fmtLen(Math.abs(zNet))} ${zNet>0?'higher':'lower'} than when you set the height. Hold it back there, or re-measure.`:'';}
-function remDismiss(){if(remKind==='time')hSnoozeUntil=performance.now()+HREM.snooze;else if(remKind==='drift'||remKind==='moved')zNet=0;
-  if(remKind==='notset')remDismissed.notset=true;remKind=null;status();}
-// ===== UI =====
-let units='cm';try{if(localStorage.getItem('units')==='ft')units='ft';}catch{}
-const fmtLen=m=>units==='ft'?(m*3.281).toFixed(1)+' ft':Math.round(m*100)+' cm';
-const fmt=m=>m==null?'–':fmtLen(m);
-function surf(m){if(m==null)return'';const f=m*3.281;return f<1.5?'ankle–knee':f<2.5?'knee–thigh':f<3.5?'waist high':f<4.5?'chest high':f<5.5?'shoulder high':f<7?'head high':'overhead';}
-function showH(){$('hv').textContent=fmtLen(phoneH());}
-function setUnits(u){units=u;try{localStorage.setItem('units',u);}catch{}
-  $('uCm').setAttribute('aria-pressed',u==='cm');$('uFt').setAttribute('aria-pressed',u==='ft');showH();stats();}
-function recompute(){waves.forEach(w=>w.m=height(w));stats();}
-function status(){const s=$('hzs');
-  if(manual){s.className=hzConf?'ok':'bad';s.textContent=hzConf?'Horizon: following your line':'Horizon: lost — set it again';}
-  else if(hz&&hzConf){s.className='ok';s.textContent='Horizon: locked';}
-  else{s.className='bad';s.textContent=hz?'Horizon: weak — hold steady':'Horizon: searching…';}
-  const h=$('hint');h.hidden=false;
-  h.textContent=review?'Check this wave':calib?'Calibrate phone height':setting?(tp.length?'Tap the horizon on the right':'Tap the horizon on the left'):
-    !hz?'Point at the sea with the horizon in view':tp.length?'Tap the crest':auto&&D.moving?'Hold the phone steady':auto?'Watching for breaking waves':'Tap the trough of a breaking wave';
-  const now=performance.now(),as=$('as');
-  as.textContent=review?'Auto: waiting for your check':calib?'Auto: paused':!auto?'Auto: off':!hz?'Auto: needs horizon':D.moving?'Auto: paused, camera moving':ev?'Auto: wave breaking…':now-flashT<2000?'Auto: wave logged':'Auto: watching';
-  as.style.color=ev||now-flashT<2000?'var(--wave)':'';
-  const u=$('undo');u.hidden=!tp.length&&!waves.length;u.textContent=tp.length?'Cancel tap':'Remove last wave';
-  if(hSetAt!=null&&now-hSetAt>HREM.time&&now>hSnoozeUntil&&!remKind)remKind='time';
-  const hr=$('hRem');hr.hidden=!remKind||!!review||!!calib||!stream;
-  if(!hr.hidden){$('hrTxt').textContent=remText();$('hrGo').textContent=remKind==='notset'?(arSupported?'Measure':'Calibrate'):'Re-measure';
-    $('hrLater').textContent=remKind==='drift'?'It’s fine':remKind==='moved'?'Same height':remKind==='notset'?'Not now':'Later';}}
-function stats(){const ms=waves.map(w=>w.m).filter(v=>v!=null);$('n').textContent=ms.length;
-  const avg=ms.length?ms.reduce((a,b)=>a+b)/ms.length:null,t=[...ms].sort((a,b)=>b-a),n=Math.max(1,Math.ceil(t.length/3)),big=ms.length?t.slice(0,n).reduce((a,b)=>a+b)/n:null;
-  $('avg').textContent=fmt(avg);$('max').textContent=fmt(big);
-  const last=ms.length?ms[ms.length-1]:null;$('live').hidden=last==null;$('lv').textContent=fmt(last);$('ls').textContent=surf(last);
-  status();}
 
-function drawHandles(S,L,pts,col,labels,dpr,b){
-  cx.drawImage(S,b.x,b.y,b.w,b.h);
-  if(L){const[A,B]=L.map(q=>toPx(q)),k=(B[1]-A[1])/(B[0]-A[0]);cx.strokeStyle='#f0a24a';cx.lineWidth=2*dpr;cx.setLineDash([10*dpr,6*dpr]);
-    cx.beginPath();cx.moveTo(b.x,A[1]+k*(b.x-A[0]));cx.lineTo(b.x+b.w,A[1]+k*(b.x+b.w-A[0]));cx.stroke();cx.setLineDash([]);}
-  if(pts.length===2){const[a,c]=pts.map(toPx);cx.strokeStyle=col;cx.lineWidth=3*dpr;cx.beginPath();cx.moveTo(...a);cx.lineTo(...c);cx.stroke();}
-  cx.font=`600 ${13*dpr}px system-ui,sans-serif`;cx.textBaseline='middle';
-  pts.forEach((q,i)=>{const[x,y]=toPx(q);cx.fillStyle=col;cx.strokeStyle='#fff';cx.lineWidth=2*dpr;cx.beginPath();cx.arc(x,y,11*dpr,0,7);cx.fill();cx.stroke();
-    if(labels[i]){cx.fillStyle='#fff';cx.fillText(labels[i],x+16*dpr,y);}});
-  if(drag){const q=pts[drag.i];if(!q)return;const[x,y]=toPx(q),R=58*dpr,Z=3,k=b.w/S.width,sw=2*R/(k*Z);let cy=y-100*dpr;if(cy-R<0)cy=y+100*dpr;
-    cx.save();cx.beginPath();cx.arc(x,cy,R,0,7);cx.clip();cx.drawImage(S,q.x*S.width-sw/2,q.y*S.height-sw/2,sw,sw,x-R,cy-R,2*R,2*R);
-    cx.strokeStyle=col;cx.lineWidth=1.5*dpr;cx.beginPath();cx.moveTo(x-R,cy);cx.lineTo(x+R,cy);cx.moveTo(x,cy-R);cx.lineTo(x,cy+R);cx.stroke();cx.restore();
-    cx.strokeStyle='#fff';cx.lineWidth=3*dpr;cx.beginPath();cx.arc(x,cy,R,0,7);cx.stroke();}
+function cross(a, b) {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 }
-function draw(){
-  cx.clearRect(0,0,cv.width,cv.height);const dpr=devicePixelRatio,b=box();
-  if(review){const v=review.cur,[t,c]=v.p;drawHandles(v.snap,v.hz,[t,c],'#3cc3cf',['trough','crest'],dpr,b);requestAnimationFrame(draw);return;}
-  if(calib){drawHandles(calib.snap,calib.hz,calib.pts,'#ffe26e',calib.pts.length===2?(calib.pts[0].y>calib.pts[1].y?['feet','head']:['head','feet']):['feet'],dpr,b);requestAnimationFrame(draw);return;}
-  if(frozen)cx.drawImage(vid,b.x,b.y,b.w,b.h);
-  if(dbg&&D.maskOn){cx.save();cx.imageSmoothingEnabled=false;cx.drawImage(dm,b.x,b.y,b.w,b.h);cx.restore();}
-  if(hz){const[A,B]=hz,ax=b.x+A.x*b.w,ay=b.y+A.y*b.h,bx=b.x+B.x*b.w,by=b.y+B.y*b.h,k=(by-ay)/(bx-ax);
-    cx.strokeStyle=hzConf||manual?'#f0a24a':'rgba(255,122,107,.8)';cx.lineWidth=2*dpr;cx.setLineDash([10*dpr,6*dpr]);
-    cx.beginPath();cx.moveTo(b.x,ay+k*(b.x-ax));cx.lineTo(b.x+b.w,ay+k*(b.x+b.w-ax));cx.stroke();cx.setLineDash([]);}
-  const lw=3*dpr,seg=(p,c)=>{cx.strokeStyle=cx.fillStyle=c;cx.lineWidth=lw;
-    p.forEach(q=>{const[x,y]=toPx(q);cx.beginPath();cx.arc(x,y,lw*2,0,7);cx.fill();});
-    if(p.length===2){const[a,c2]=[toPx(p[0]),toPx(p[1])];cx.beginPath();cx.moveTo(...a);cx.lineTo(...c2);cx.stroke();}};
-  waves.slice(-3).forEach(w=>seg(w.p,'rgba(60,195,207,.55)'));
-  if(!setting)seg(tp,'#3cc3cf');else seg(tp,'#f0a24a');
-  if(live&&!frozen){cx.setLineDash([6*dpr,4*dpr]);seg(live,'#ffffff');cx.setLineDash([]);}
-  if(dbg&&stream)drawDebug(b,dpr);
-  requestAnimationFrame(draw);
+
+function dot(a, b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
-function drawDebug(b,dpr){
-  const P=q=>[b.x+q.x*b.w,b.y+q.y*b.h],now=performance.now();
-  cx.font=`${11*dpr}px ui-monospace,Menlo,monospace`;cx.textBaseline='middle';cx.lineWidth=1.25*dpr;
-  const h=phoneH(),f=vid.videoWidth?focalPx():0,dip=1.76/60*Math.PI/180*Math.sqrt(h);
-  // 1. the water plane: lines of equal distance, from phone height + lens + horizon
-  if(hz&&f){const[A,B]=hz,k=(B.y-A.y)/(B.x-A.x);cx.strokeStyle='rgba(255,226,110,.75)';cx.fillStyle='#ffe26e';let lastY=1e9;
-    for(const dist of [5,10,20,50,100]){const tgt=Math.atan(h/dist);if(tgt<=dip)continue;const pts=[];
-      for(let i=0;i<=8;i++){const x=i/8;let lo=A.y+k*(x-A.x),hi=1;if(depression({x,y:hi},hz,f,dip)<tgt)continue;
-        for(let it=0;it<22;it++){const m=(lo+hi)/2;if(depression({x,y:m},hz,f,dip)<tgt)lo=m;else hi=m;}pts.push(P({x,y:hi}));}
-      if(pts.length<2)continue;cx.beginPath();pts.forEach((q,i)=>i?cx.lineTo(...q):cx.moveTo(...q));cx.stroke();
-      if(lastY-pts[0][1]>13*dpr){cx.fillText(dist+' m',pts[0][0]+4*dpr,pts[0][1]-7*dpr);lastY=pts[0][1];}}}   // skip labels that would overlap near the horizon
-  // 2. horizon: coarse guess (grey), candidate edges (green = used by the line, red = rejected)
-  if(D.coarse){const[a,c]=D.coarse.map(P),k=(c[1]-a[1])/(c[0]-a[0]);cx.strokeStyle='rgba(200,200,200,.6)';cx.setLineDash([2*dpr,4*dpr]);
-    cx.beginPath();cx.moveTo(b.x,a[1]+k*(b.x-a[0]));cx.lineTo(b.x+b.w,a[1]+k*(b.x+b.w-a[0]));cx.stroke();cx.setLineDash([]);}
-  if(D.cands)for(const q of D.cands){const used=D.keep&&D.keep.includes(q),[x,y]=P(q);cx.fillStyle=used?'#4cff8a':'#ff5a5a';cx.beginPath();cx.arc(x,y,(used?3.5:2.5)*dpr,0,7);cx.fill();}
-  // 3. wave detection: largest patch of new white water and what was decided about it
-  if(D.blob){const r=D.blob,hot=D.state==='NEW WAVE';cx.strokeStyle=hot?'#ff3fd0':'rgba(255,63,208,.55)';cx.strokeRect(b.x+r.x*b.w,b.y+r.y*b.h,r.w*b.w,r.h*b.h);
-    cx.fillStyle=cx.strokeStyle;cx.fillText(D.state,b.x+r.x*b.w,b.y+r.y*b.h-8*dpr);}
-  // 4. full-resolution re-measurement: search box (yellow) and the column measured
-  if(D.wref&&now-D.wref.t<2500){const r=D.wref;cx.strokeStyle='#ffe26e';cx.strokeRect(b.x+r.x*b.w,b.y+r.y*b.h,r.w*b.w,r.h*b.h);
-    const[x1,y1]=P({x:r.col,y:r.top}),[,y2]=P({x:r.col,y:r.bot});cx.lineWidth=2*dpr;cx.beginPath();cx.moveTo(x1,y1);cx.lineTo(x1,y2);cx.stroke();cx.lineWidth=1.25*dpr;}
-  if(D.lastReject&&now-D.lastReject.t<3000){cx.fillStyle='#ff9a5a';cx.fillText('ignored: '+D.lastReject.reason,b.x+8*dpr,b.y+64*dpr);}
-  // 5. each logged wave: height and computed distance
-  cx.fillStyle='#e3f0f2';waves.slice(-3).forEach(w=>{if(w.m==null)return;const[x,y]=P(w.p[1]);cx.fillText(`${fmtLen(w.m)} @ ${w.D!=null?w.D.toFixed(0):'?'} m`,x+9*dpr,y);});
-  // 6. numbers
-  let roll=0,pitch=0;if(hz&&f){const[A,B]=hz;roll=Math.atan2((B.y-A.y)*vid.videoHeight,(B.x-A.x)*vid.videoWidth)*180/Math.PI;pitch=depression({x:.5,y:.5},hz,f,dip)*180/Math.PI;}
-  const sg=v=>(v>0?'+':'')+v,lines=[
-    `cam ${vid.videoWidth}x${vid.videoHeight}  f ${f|0} px`,
-    `horizon ${hz?(manual?D.mode:'auto'):'none'}  edges ${D.keep?D.keep.length:0}/${D.cands?new Set(D.cands.map(q=>q.s)).size:0}`,
+
+function norm(a) {
+  return Math.hypot(a[0], a[1], a[2]);
+}
+
+// ===== Horizon ===================================================================================
+
+// Finding the sea horizon, and following it from snapshot to snapshot.
+//
+// 1. Coarse: on the downscaled frame, five vertical strips each report their topmost strong brightness edge
+//    (sky meets sea before rocks, surf or sand do); a line is fitted through the strips that agree.
+// 2. Refine: at full resolution, seven narrow strips around that line give up to three candidate edges each,
+//    with sub-pixel precision. An island or ship makes a strong edge ABOVE the weaker sea edge, so the line
+//    is the one most strips agree on, not the strongest edges.
+
+/** How far around the expected line (fraction of frame height) to look when refining. */
+const AUTO_BAND = 0.025;
+const FOLLOW_BAND = 0.015;
+/** A hand-picked horizon counts as lost after this many snapshots without finding its edge. */
+const MAX_MISSES = 20;
+
+/** Brightness that also separates the blue sky from the darker, bluer sea. */
+function skySeaBrightness(data, i) {
+  return 0.2 * data[i] + 0.5 * data[i + 1] + 0.3 * data[i + 2] - 0.25 * (data[i + 2] - data[i]);
+}
+
+// ---------- coarse ----------
+
+/** Coarse horizon on a downscaled frame: { line, strength } or null. */
+function findCoarseHorizon(image) {
+  const edges = [];
+  for (let i = 0; i < 5; i++) {
+    const x0 = Math.round(image.width * (0.05 + i * 0.18));
+    const x1 = Math.round(image.width * (0.05 + i * 0.18 + 0.14));
+    const edge = topmostEdge(image, x0, x1);
+    if (edge) edges.push(edge);
+  }
+  if (edges.length < 3) return null;
+  const middle = median(edges.map(e => e.y));
+  const agreeing = edges.filter(e => Math.abs(e.y - middle) < 0.04);
+  if (agreeing.length < 3) return null;
+  return { line: fitLine(agreeing), strength: Math.min(...agreeing.map(e => e.strength)) };
+}
+
+/** The first edge from the top that is at least half as strong as the strongest one in the strip. */
+function topmostEdge(image, x0, x1) {
+  const rows = averageRows(image, x0, x1);
+  const limit = image.height * 0.85;                       // the bottom of the frame is beach
+  const edge = new Float32Array(image.height);
+  let strongest = 0;
+  for (let y = 3; y < limit; y++) {
+    edge[y] = Math.abs((rows[y - 3] + rows[y - 2] + rows[y - 1]) - (rows[y] + rows[y + 1] + rows[y + 2])) / 3;
+    strongest = Math.max(strongest, edge[y]);
+  }
+  if (strongest < 6) return null;
+  let y = 3;
+  while (y < limit && edge[y] < strongest * 0.5) y++;
+  while (y + 1 < limit && edge[y + 1] >= edge[y]) y++;     // climb to that edge's peak
+  return { x: (x0 + x1) / 2 / image.width, y: (y - 0.5) / image.height, strength: edge[y] };
+}
+
+function averageRows(image, x0, x1) {
+  const rows = new Float32Array(image.height);
+  for (let y = 0; y < image.height; y++) {
+    let sum = 0;
+    for (let x = x0; x < x1; x++) sum += skySeaBrightness(image.data, (y * image.width + x) * 4);
+    rows[y] = sum / (x1 - x0);
+  }
+  return rows;
+}
+
+// ---------- refine ----------
+
+/**
+ * Refines a horizon line on the full-resolution source.
+ * Returns { line, candidates, used }: line is null if fewer than three strips agree;
+ * candidates and used are kept for the debug view.
+ */
+function refineHorizon(source, line, bandFraction) {
+  const size = frameSize(source);
+  const band = Math.max(8, Math.round(size.height * bandFraction));
+  const strips = [];
+  for (let i = 0; i < 7; i++) {
+    const candidates = stripCandidates(source, size, line, i, band);
+    if (candidates.length) strips.push(candidates);
+  }
+  const candidates = strips.flat();
+  if (strips.length < 3) return { line: null, candidates, used: [] };
+  const used = mostAgreedLine(strips, size.height);
+  return { line: used.length >= 3 ? fitLine(used) : null, candidates, used };
+}
+
+/** Up to three edge candidates in strip i, strongest first. */
+function stripCandidates(source, size, line, i, band) {
+  const xn = 0.08 + i * 0.14;
+  const centreY = Math.round(horizonY(line, xn) * size.height);
+  const y0 = Math.max(0, centreY - band);
+  const height = Math.min(size.height, centreY + band) - y0;
+  const width = Math.max(4, Math.round(size.width * 0.06));
+  const x0 = Math.max(0, Math.min(size.width - width, Math.round(xn * size.width - width / 2)));
+  if (height < 10) return [];
+
+  const samples = 16;
+  const data = readPixels(source, x0, y0, width, height, samples, height);
+  const rows = averageRows({ data, width: samples, height }, 0, samples);
+  const edge = new Float32Array(height);
+  let strongest = 0;
+  for (let y = 2; y < height - 2; y++) {
+    edge[y] = Math.abs((rows[y + 1] + rows[y + 2]) - (rows[y - 1] + rows[y - 2])) / 2;
+    strongest = Math.max(strongest, edge[y]);
+  }
+  if (strongest < 4) return [];
+
+  const peaks = [];
+  for (let y = 3; y < height - 3; y++) {
+    const isPeak = edge[y] >= edge[y - 1] && edge[y] > edge[y + 1];
+    if (isPeak && edge[y] >= Math.max(4, strongest * 0.12)) peaks.push(y);
+  }
+  peaks.sort((a, b) => edge[b] - edge[a]);
+  const x = (x0 + width / 2) / size.width;
+  return peaks.slice(0, 3).map(y => ({ x, y: (y0 + y + subPixelOffset(edge, y) + 0.5) / size.height, strip: i }));
+}
+
+/** Where the true peak lies between samples, from a parabola through three values (−1…1). */
+function subPixelOffset(values, y) {
+  const a = values[y - 1], b = values[y], c = values[y + 1];
+  const curvature = a - 2 * b + c;
+  const offset = curvature ? 0.5 * (a - c) / curvature : 0;
+  return Math.max(-1, Math.min(1, offset));
+}
+
+/**
+ * Tries the line through every pair of candidates from two different strips and keeps the one the most strips
+ * agree with (a candidate within 1.2 px), ties broken by the smallest squared error. Returns the agreeing points.
+ */
+function mostAgreedLine(strips, frameHeight) {
+  let best = [], bestError = Infinity;
+  for (let i = 0; i < strips.length; i++) {
+    for (let j = i + 1; j < strips.length; j++) {
+      for (const a of strips[i]) {
+        for (const b of strips[j]) {
+          const { agreeing, error } = agreementWith(a, b, strips, frameHeight);
+          if (agreeing.length > best.length || (agreeing.length === best.length && error < bestError)) {
+            best = agreeing;
+            bestError = error;
+          }
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function agreementWith(a, b, strips, frameHeight) {
+  const slope = (b.y - a.y) / (b.x - a.x);
+  const agreeing = [];
+  let error = 0;
+  for (const strip of strips) {
+    let closest = null, closestPx = 1.2;
+    for (const p of strip) {
+      const px = Math.abs(p.y - (a.y + slope * (p.x - a.x))) * frameHeight;
+      if (px < closestPx) { closestPx = px; closest = p; }
+    }
+    if (closest) { agreeing.push(closest); error += closestPx * closestPx; }
+  }
+  return { agreeing, error };
+}
+
+// ---------- helpers ----------
+
+/** Least-squares line through points, returned as two points at x = 0.1 and 0.9. */
+function fitLine(points) {
+  const n = points.length;
+  const mx = points.reduce((s, p) => s + p.x, 0) / n;
+  const my = points.reduce((s, p) => s + p.y, 0) / n;
+  let sxy = 0, sxx = 0;
+  for (const p of points) { sxy += (p.x - mx) * (p.y - my); sxx += (p.x - mx) ** 2; }
+  const slope = sxx ? sxy / sxx : 0;
+  return [{ x: 0.1, y: my + slope * (0.1 - mx) }, { x: 0.9, y: my + slope * (0.9 - mx) }];
+}
+
+/** Horizon of a still image (a snapshot), or null. */
+function findHorizon(source) {
+  const coarse = findCoarseHorizon(downscale(source));
+  if (!coarse) return null;
+  return refineHorizon(source, coarse.line, AUTO_BAND).line || coarse.line;
+}
+
+// ---------- tracking ----------
+
+/**
+ * The horizon over time. `current` is this snapshot's line (used for measuring); `display` is smoothed for drawing.
+ * A horizon picked by hand is followed: predicted from the camera's vertical shift, then snapped to the nearest edge.
+ */
+class HorizonTracker {
+  constructor() {
+    this.current = null;
+    this.display = null;
+    this.strength = 0;
+    this.picked = null;
+    this.misses = 0;
+    this.debug = { mode: 'auto', coarse: null, candidates: [], used: [] };
+  }
+
+  get isPicked() { return this.picked !== null; }
+
+  /** Drawn as found (orange) rather than weak (red). */
+  get isConfident() { return this.strength > 0 || this.isPicked; }
+
+  /**
+   * Analyses one snapshot. `image` is the downscaled frame, `source` the full-resolution one,
+   * `shiftY` the camera's vertical shift since the last snapshot in analysis pixels.
+   */
+  update(image, source, shiftY) {
+    if (this.isPicked) this.follow(source, shiftY / image.height);
+    else this.search(image, source);
+    return this.current;
+  }
+
+  pick(line) {
+    this.picked = this.current = this.display = [...line].sort((a, b) => a.x - b.x);
+    this.misses = 0;
+    this.strength = 1;
+  }
+
+  unpick() {
+    this.picked = this.current = this.display = null;
+  }
+
+  /** { text, ok } for the status line. */
+  status() {
+    if (this.isPicked) {
+      return this.strength ? { text: 'Horizon: following your line', ok: true } : { text: 'Horizon: lost — set it again', ok: false };
+    }
+    if (this.display && this.strength) return { text: 'Horizon: locked', ok: true };
+    return { text: this.display ? 'Horizon: weak — hold steady' : 'Horizon: searching…', ok: false };
+  }
+
+  search(image, source) {
+    const coarse = findCoarseHorizon(image);
+    this.strength = coarse ? coarse.strength : 0;
+    this.debug = { mode: 'auto', coarse: coarse && coarse.line, candidates: [], used: [] };
+    if (!coarse) { this.current = null; return; }          // keep showing the last good line
+    const fine = refineHorizon(source, coarse.line, AUTO_BAND);
+    this.debug.candidates = fine.candidates;
+    this.debug.used = fine.used;
+    this.current = fine.line || coarse.line;
+    this.display = this.smoothed(this.current);
+  }
+
+  follow(source, shiftFraction) {
+    const predicted = this.picked.map(p => ({ x: p.x, y: p.y + shiftFraction }));
+    const fine = refineHorizon(source, predicted, FOLLOW_BAND);
+    this.debug = { mode: fine.line ? 'following' : 'predicting', coarse: null, candidates: fine.candidates, used: fine.used };
+    if (fine.line) { this.picked = fine.line; this.misses = 0; } else { this.picked = predicted; this.misses++; }
+    this.current = this.display = this.picked;
+    this.strength = this.misses < MAX_MISSES ? 1 : 0;
+  }
+
+  /** Averages with the previous display line unless the horizon jumped (new scene). */
+  smoothed(line) {
+    const previous = this.display;
+    if (!previous || Math.abs(previous[0].y - line[0].y) >= 0.05) return line;
+    return previous.map((p, i) => ({ x: p.x, y: (p.y + line[i].y) / 2 }));
+  }
+}
+
+// ===== Camera motion =============================================================================
+
+// How the camera moved between two snapshots (hand shake and panning).
+//
+// Sideways: block matching on textured patches (sand, footprints, people) at half the analysis resolution.
+// A beach is mostly horizontal bands, so whole-row or whole-column profiles barely change when panning; patches do.
+// Vertical and roll: from the horizon itself when it's found in both snapshots (sub-pixel).
+// The gyroscope only flags motion too fast to follow.
+
+const PATCH = 10;                 // half-size of a matched patch (half-resolution pixels)
+const SEARCH_X = 24;              // ± sideways search
+const SEARCH_Y = 6;               // ± vertical search
+const MIN_TEXTURE = 25;           // patch brightness variance; flatter patches (sky, calm water) are skipped
+const CLEAR_MATCH = 0.85;         // a shifted match must beat "no motion" by 15 %, or the patch reports no motion
+const PATCH_ROWS = [0.3, 0.7];
+const PATCH_COLUMNS = [0.14, 0.38, 0.62, 0.86];
+
+const FAST_PAN = 0.15;            // fraction of frame width per snapshot
+const FAST_TILT = 0.08;           // fraction of frame height per snapshot
+const FAST_ROLL_DEGREES = 0.8;
+const FAST_GYRO_DEGREES_PER_S = 45;
+
+class CameraMotion {
+  constructor() {
+    this.previous = null;
+    this.gyroPeak = 0;
+    addEventListener('devicemotion', event => this.recordRotation(event));
+  }
+
+  reset() {
+    this.previous = null;
+  }
+
+  recordRotation(event) {
+    const r = event.rotationRate;
+    if (r) this.gyroPeak = Math.max(this.gyroPeak, Math.hypot(r.alpha || 0, r.beta || 0, r.gamma || 0));
+  }
+
+  /**
+   * Picture shift since the previous snapshot from block matching, in analysis pixels (content moved by +dx, +dy).
+   * `trusted` is false when the patches don't agree (e.g. only moving water in view); the shift is then 0.
+   */
+  imageShift(brightness, width, height, previousHorizon) {
+    const half = halfResolution(brightness, width, height);
+    const previous = this.previous;
+    this.previous = half;
+    if (!previous || previous.data.length !== half.data.length) return { dx: 0, dy: 0, trusted: true };
+    const horizonRow = previousHorizon
+      ? Math.round((previousHorizon[0].y + previousHorizon[1].y) / 2 * half.height)
+      : Math.round(half.height * 0.3);
+    const match = matchPatches(half, previous, horizonRow);
+    return match ? { dx: match.dx * 2, dy: match.dy * 2, trusted: true } : { dx: 0, dy: 0, trusted: false };
+  }
+
+  /**
+   * This snapshot's motion: the image shift, with vertical shift and roll taken from the horizon when possible.
+   * `moving` means too fast to track: wave detection pauses.
+   */
+  combine(shift, horizon, previousHorizon, grid, frame) {
+    let { dx, dy } = shift, roll = 0;
+    if (horizon && previousHorizon) {
+      dy = Math.round((midY(horizon) - midY(previousHorizon)) * grid.height);
+      roll = (slope(horizon, frame) - slope(previousHorizon, frame)) * 180 / Math.PI;
+    }
+    const gyroFast = this.gyroPeak > FAST_GYRO_DEGREES_PER_S;
+    this.gyroPeak = 0;
+    const moving = (shift.trusted && Math.abs(dx) > grid.width * FAST_PAN)
+      || Math.abs(dy) > grid.height * FAST_TILT
+      || Math.abs(roll) > FAST_ROLL_DEGREES
+      || gyroFast;
+    return { dx, dy, roll, trusted: shift.trusted, gyroFast, moving };
+  }
+}
+
+function midY(line) {
+  return (line[0].y + line[1].y) / 2;
+}
+
+function slope(line, frame) {
+  return Math.atan2((line[1].y - line[0].y) * frame.height, (line[1].x - line[0].x) * frame.width);
+}
+
+function halfResolution(brightness, width, height) {
+  const w = width >> 1, h = height >> 1, data = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const j = 2 * y * width + 2 * x;
+      data[y * w + x] = (brightness[j] + brightness[j + 1] + brightness[j + width] + brightness[j + width + 1]) / 4;
+    }
+  }
+  return { data, width: w, height: h };
+}
+
+/** Median shift of the textured patches below the horizon, or null if they don't agree. */
+function matchPatches(current, previous, horizonRow) {
+  const top = Math.max(PATCH + SEARCH_Y, horizonRow + PATCH);
+  const shifts = [];
+  for (const fy of PATCH_ROWS) {
+    for (const fx of PATCH_COLUMNS) {
+      const cy = Math.round(top + (current.height - PATCH - SEARCH_Y - top) * fy);
+      const cx = Math.round(current.width * fx);
+      if (cy - PATCH < 0 || cy + PATCH > current.height) continue;
+      if (patchVariance(current, cx, cy) < MIN_TEXTURE) continue;
+      shifts.push(bestPatchShift(current, previous, cx, cy));
+    }
+  }
+  if (shifts.length < 3) return null;                     // too little texture to tell
+  const dx = median(shifts.map(s => s.dx)), dy = median(shifts.map(s => s.dy));
+  const agree = shifts.filter(s => Math.abs(s.dx - dx) <= 2 && Math.abs(s.dy - dy) <= 2).length;
+  return agree >= 3 && agree >= shifts.length * 0.6 ? { dx, dy } : null;
+}
+
+function patchVariance(image, cx, cy) {
+  let sum = 0, sumSq = 0;
+  for (let y = cy - PATCH; y < cy + PATCH; y++) {
+    for (let x = cx - PATCH; x < cx + PATCH; x++) {
+      const v = image.data[y * image.width + x];
+      sum += v; sumSq += v * v;
+    }
+  }
+  const n = 4 * PATCH * PATCH;
+  return sumSq / n - (sum / n) ** 2;
+}
+
+/** Shift of one patch between snapshots; (0, 0) unless a shifted match is clearly better than none. */
+function bestPatchShift(current, previous, cx, cy) {
+  const still = patchDifference(current, previous, cx, cy, 0, 0, Infinity);
+  let best = Infinity, bestX = 0, bestY = 0;
+  for (let oy = -SEARCH_Y; oy <= SEARCH_Y; oy++) {
+    for (let ox = -SEARCH_X; ox <= SEARCH_X; ox++) {
+      const px = cx - ox, py = cy - oy;
+      if (px - PATCH < 0 || px + PATCH > current.width || py - PATCH < 0 || py + PATCH > current.height) continue;
+      const difference = patchDifference(current, previous, cx, cy, ox, oy, best);
+      if (difference < best) { best = difference; bestX = ox; bestY = oy; }
+    }
+  }
+  return best > CLEAR_MATCH * still ? { dx: 0, dy: 0 } : { dx: bestX, dy: bestY };
+}
+
+/** Sum of absolute differences between the patch now and the previous snapshot shifted by (ox, oy); stops past `limit`. */
+function patchDifference(current, previous, cx, cy, ox, oy, limit) {
+  const w = current.width;
+  let sum = 0;
+  for (let y = -PATCH; y < PATCH && sum < limit; y++) {
+    const row = (cy + y) * w + cx, previousRow = (cy - oy + y) * w + cx - ox;
+    for (let x = -PATCH; x < PATCH; x++) sum += Math.abs(current.data[row + x] - previous.data[previousRow + x]);
+  }
+  return sum;
+}
+
+// ===== White water ===============================================================================
+
+// White water on the analysis grid: which pixels are white now, which are NEWLY white,
+// and the largest new patch. A breaking wave shows up as new white where the water was blue a moment ago.
+//
+// The background is a slowly updated memory of where white has been. It is shifted along with the camera
+// so hand shake doesn't make old foam look new.
+
+const HORIZON_GAP = 0.015;         // start this far below the horizon (fraction of frame height)
+const ABOVE_WATER = 70;            // white = this much brighter than the average water…
+const MIN_THRESHOLD = 140;         // …within these limits
+const MAX_THRESHOLD = 230;
+const MAX_TINT = 60;               // white is unsaturated: max − min channel below this
+const NEW_IF_BACKGROUND_BELOW = 0.25;
+const BACKGROUND_RATE = 0.05;      // how fast the background learns
+
+class WhiteWater {
+  constructor() {
+    this.background = null;
+  }
+
+  reset() {
+    this.background = null;
+  }
+
+  /**
+   * Analyses one snapshot. Returns { white, fresh, threshold, patch, grownFromFoam }, or null on the first
+   * snapshot after a reset (it only seeds the background).
+   * `patch` is the largest patch of new white (or null); `grownFromFoam` is true when it only grows out of
+   * old foam on its seaward side (a rolling bore, not a new break).
+   */
+  analyse(image, brightness, horizon, dx, dy) {
+    const { width, height } = image;
+    const firstRow = rowsBelowHorizon(horizon, width, height);
+    const threshold = whiteThreshold(brightness, firstRow, width, height);
+    const white = whiteMask(image, firstRow, threshold);
+    if (!this.background || this.background.length !== white.length) {
+      this.background = Float32Array.from(white);
+      return null;
+    }
+    this.followCamera(dx, dy, width, height);
+    const fresh = newWhite(white, this.background, width, height);
+    const patch = largestPatch(fresh, width, height);
+    const grownFromFoam = patch !== null && growsFromOldFoam(patch, this.background, width);
+    this.learn(white);
+    return { white, fresh, threshold, patch, grownFromFoam, width, height };
+  }
+
+  followCamera(dx, dy, width, height) {
+    if (!dx && !dy) return;
+    const shifted = new Float32Array(width * height).fill(1);   // newly visible areas count as old white: never "new"
+    for (let y = 0; y < height; y++) {
+      const sy = y - dy;
+      if (sy < 0 || sy >= height) continue;
+      for (let x = 0; x < width; x++) {
+        const sx = x - dx;
+        if (sx >= 0 && sx < width) shifted[y * width + x] = this.background[sy * width + sx];
+      }
+    }
+    this.background = shifted;
+  }
+
+  learn(white) {
+    const bg = this.background;
+    for (let j = 0; j < bg.length; j++) bg[j] = bg[j] * (1 - BACKGROUND_RATE) + white[j] * BACKGROUND_RATE;
+  }
+}
+
+/** First analysed row of each column: a little below the horizon. */
+function rowsBelowHorizon(horizon, width, height) {
+  const gap = Math.round(height * HORIZON_GAP);
+  const rows = new Int16Array(width);
+  for (let x = 0; x < width; x++) {
+    rows[x] = Math.min(height, Math.max(1, Math.ceil(horizonY(horizon, (x + 0.5) / width) * height) + gap));
+  }
+  return rows;
+}
+
+/** The whiteness threshold adapts to how bright the water is (sampled on every other pixel). */
+function whiteThreshold(brightness, firstRow, width, height) {
+  let sum = 0, count = 0;
+  for (let x = 0; x < width; x += 2) {
+    for (let y = firstRow[x]; y < height; y += 2) { sum += brightness[y * width + x]; count++; }
+  }
+  const water = count ? sum / count : 120;
+  return Math.min(MAX_THRESHOLD, Math.max(MIN_THRESHOLD, water + ABOVE_WATER));
+}
+
+function whiteMask(image, firstRow, threshold) {
+  const { data, width, height } = image;
+  const mask = new Uint8Array(width * height);
+  for (let x = 0; x < width; x++) {
+    for (let y = firstRow[x]; y < height; y++) {
+      const j = y * width + x;
+      if (isWhite(data, j * 4, threshold)) mask[j] = 1;
+    }
+  }
+  return mask;
+}
+
+function isWhite(data, i, threshold) {
+  const max = Math.max(data[i], data[i + 1], data[i + 2]);
+  const min = Math.min(data[i], data[i + 1], data[i + 2]);
+  return max > threshold && max - min < MAX_TINT;
+}
+
+/** White now, with nothing white within one pixel in the recent background. */
+function newWhite(white, background, width, height) {
+  const fresh = new Uint8Array(width * height);
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const j = y * width + x;
+      if (white[j] && neighbourhoodMax(background, j, width) < NEW_IF_BACKGROUND_BELOW) fresh[j] = 1;
+    }
+  }
+  return fresh;
+}
+
+function neighbourhoodMax(values, j, width) {
+  let max = 0;
+  for (let oy = -width; oy <= width; oy += width) {
+    for (let ox = -1; ox <= 1; ox++) max = Math.max(max, values[j + oy + ox]);
+  }
+  return max;
+}
+
+/** True when most of the patch's columns have old foam right above them (within 3 px). */
+function growsFromOldFoam(patch, background, width) {
+  let columns = 0, touching = 0;
+  for (const x of patch.columns()) {
+    columns++;
+    for (let r = 1; r <= 3; r++) {
+      const y = patch.tops[x] - r;
+      if (y >= 0 && background[y * width + x] > 0.5) { touching++; break; }
+    }
+  }
+  return touching / columns >= 0.5;
+}
+
+// ---------- patches ----------
+
+/** A connected patch of pixels on the analysis grid, with its top and bottom row per column (−1 if none). */
+class Patch {
+  constructor(pixels, tops, bottoms) {
+    this.pixels = pixels;
+    this.tops = tops;
+    this.bottoms = bottoms;
+    this.tallest = tallestColumn(tops, bottoms);
+  }
+
+  get area() { return this.pixels.length; }
+
+  *columns() {
+    for (let x = 0; x < this.bottoms.length; x++) if (this.bottoms[x] >= 0) yield x;
+  }
+
+  /** Bounding box in grid pixels: { x0, x1, y0, y1 }. */
+  bounds() {
+    let x0 = Infinity, x1 = -1, y0 = Infinity, y1 = -1;
+    for (const x of this.columns()) {
+      x0 = Math.min(x0, x); x1 = x;
+      y0 = Math.min(y0, this.tops[x]); y1 = Math.max(y1, this.bottoms[x]);
+    }
+    return { x0, x1, y0, y1 };
+  }
+}
+
+function tallestColumn(tops, bottoms) {
+  let best = { x: -1, top: 0, bottom: 0, extent: 0 };
+  for (let x = 0; x < bottoms.length; x++) {
+    const extent = bottoms[x] - tops[x] + 1;
+    if (bottoms[x] >= 0 && extent > best.extent) best = { x, top: tops[x], bottom: bottoms[x], extent };
+  }
+  return best;
+}
+
+/** Largest 4-connected patch of set pixels, or null. */
+function largestPatch(mask, width, height) {
+  const labels = new Int32Array(width * height);
+  let best = null, label = 0;
+  for (let start = 0; start < mask.length; start++) {
+    if (!mask[start] || labels[start]) continue;
+    const area = fill(mask, labels, start, ++label, width);
+    if (!best || area > best.area) best = { label, area };
+  }
+  if (!best) return null;
+  return collectPatch(labels, best, width);
+}
+
+function fill(mask, labels, start, label, width) {
+  const n = mask.length, stack = [start];
+  labels[start] = label;
+  let area = 0;
+  while (stack.length) {
+    const j = stack.pop();
+    area++;
+    const x = j % width;
+    const neighbours = [x > 0 ? j - 1 : -1, x < width - 1 ? j + 1 : -1, j >= width ? j - width : -1, j < n - width ? j + width : -1];
+    for (const k of neighbours) {
+      if (k >= 0 && mask[k] && !labels[k]) { labels[k] = label; stack.push(k); }
+    }
+  }
+  return area;
+}
+
+function collectPatch(labels, { label, area }, width) {
+  const tops = new Int16Array(width).fill(32767), bottoms = new Int16Array(width).fill(-1);
+  const pixels = new Int32Array(area);
+  let count = 0;
+  for (let j = 0; j < labels.length; j++) {
+    if (labels[j] !== label) continue;
+    pixels[count++] = j;
+    const x = j % width, y = (j / width) | 0;
+    if (y < tops[x]) tops[x] = y;
+    if (y > bottoms[x]) bottoms[x] = y;
+  }
+  return new Patch(pixels, tops, bottoms);
+}
+
+// ---------- full-resolution measurement ----------
+
+/**
+ * Re-measures a patch on the full-resolution frame, around its tallest column (±1 grid pixel):
+ * in each pixel column, the run of white containing the middle; the 80th-percentile column (robust to
+ * stray pixels) gives trough (bottom edge) and crest (top edge). Returns { trough, crest, box } or null.
+ */
+function measureAtFullResolution(source, patch, gridWidth, gridHeight, threshold) {
+  const size = frameSize(source), t = patch.tallest;
+  const x0 = Math.max(0, Math.floor((t.x - 3) / gridWidth * size.width));
+  const x1 = Math.min(size.width, Math.ceil((t.x + 4) / gridWidth * size.width));
+  const y0 = Math.max(0, Math.floor((t.top - 1) / gridHeight * size.height));
+  const y1 = Math.min(size.height, Math.ceil((t.bottom + 2) / gridHeight * size.height));
+  const width = x1 - x0, height = y1 - y0;
+  if (width < 2 || height < 2) return null;
+
+  const data = readPixels(source, x0, y0, width, height);
+  const white = (x, y) => isWhite(data, (y * width + x) * 4, threshold);
+  const middle = Math.round((t.top + t.bottom + 1) / 2 / gridHeight * size.height) - y0;
+  const gap = Math.max(2, Math.round(height * 0.03));
+  const runs = [];
+  for (let x = 0; x < width; x++) {
+    const run = whiteRunThrough(white, x, middle, height, gap);
+    if (run) runs.push(run);
+  }
+  if (!runs.length) return null;
+
+  runs.sort((a, b) => a.extent - b.extent);
+  const run = runs[Math.floor((runs.length - 1) * 0.8)];
+  const x = (x0 + run.x + 0.5) / size.width;
+  return {
+    trough: { x, y: (y0 + run.bottom + 1) / size.height },
+    crest: { x, y: (y0 + run.top) / size.height },
+    box: { x: x0 / size.width, y: y0 / size.height, w: width / size.width, h: height / size.height },
+  };
+}
+
+/** The white run in column x nearest the middle row, tolerating gaps of up to `gap` pixels. */
+function whiteRunThrough(white, x, middle, height, gap) {
+  const seed = nearestWhite(white, x, middle, height);
+  if (seed < 0) return null;
+  let top = seed, bottom = seed, miss = 0;
+  for (let y = seed - 1; y >= 0; y--) {
+    if (white(x, y)) { top = y; miss = 0; } else if (++miss > gap) break;
+  }
+  miss = 0;
+  for (let y = seed + 1; y < height; y++) {
+    if (white(x, y)) { bottom = y; miss = 0; } else if (++miss > gap) break;
+  }
+  return { x, top, bottom, extent: bottom - top + 1 };
+}
+
+function nearestWhite(white, x, middle, height) {
+  for (let r = 0; r < height; r++) {
+    const up = middle - r, down = middle + r;
+    if (up < 0 && down >= height) break;
+    if (up >= 0 && up < height && white(x, up)) return up;
+    if (down >= 0 && down < height && white(x, down)) return down;
+  }
+  return -1;
+}
+
+// ===== Trough guess ==============================================================================
+
+// A first guess for where a wave's trough is, for the review handles.
+//
+// Detection measures white water; on a plunging wave the white is only the lip. Below it is the dark face
+// (or the inside of the curl), and the trough is where that dark stretch meets the brighter foam or water
+// in front. The search stays within three lip-heights below the lip, which keeps it off the beach.
+
+const SEARCH_LIP_HEIGHTS = 3;
+const DARK = 0.6;            // darker than 60 % of the lip's brightness
+const BRIGHTER_BY = 30;      // over 6 rows
+const COLUMN_WIDTH = 9;
+
+/** Returns a better trough point, or the given one if no dark face is found below the lip. */
+function guessTrough(snapshot, trough, crest) {
+  const width = snapshot.width, height = snapshot.height;
+  const lipTop = Math.round(crest.y * height), lipBottom = Math.round(trough.y * height);
+  const lipHeight = Math.max(6, lipBottom - lipTop);
+  const rows = Math.min(height - 1, lipBottom + lipHeight * 4 + 30) - lipTop;
+  if (rows < 12) return trough;
+
+  const brightness = columnBrightness(snapshot, Math.round(trough.x * width), lipTop, rows);
+  const lip = brightestAbove(brightness, lipBottom - lipTop);
+  const below = lipBottom - lipTop;
+  let start = -1;
+  for (let y = below; y <= Math.min(rows - 7, below + lipHeight * SEARCH_LIP_HEIGHTS); y++) {
+    if (brightness[y] < DARK * lip && brightness[y + 6] - brightness[y] >= BRIGHTER_BY) start = y;
+  }
+  if (start < 0) return trough;
+  return { x: trough.x, y: (lipTop + steepestRise(brightness, start)) / height };
+}
+
+/** Brightness down a narrow column, smoothed over 5 rows. */
+function columnBrightness(snapshot, x, top, rows) {
+  const x0 = Math.max(0, Math.min(snapshot.width - COLUMN_WIDTH, x - 4));
+  const data = snapshot.getContext('2d').getImageData(x0, top, COLUMN_WIDTH, rows).data;
+  const raw = new Float32Array(rows);
+  for (let y = 0; y < rows; y++) {
+    let sum = 0;
+    for (let k = 0; k < COLUMN_WIDTH; k++) {
+      const i = (y * COLUMN_WIDTH + k) * 4;
+      sum += 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
+    }
+    raw[y] = sum / COLUMN_WIDTH;
+  }
+  return smooth(raw, 2);
+}
+
+function smooth(values, radius) {
+  const out = new Float32Array(values.length);
+  for (let y = 0; y < values.length; y++) {
+    let sum = 0, count = 0;
+    for (let k = -radius; k <= radius; k++) {
+      const j = y + k;
+      if (j >= 0 && j < values.length) { sum += values[j]; count++; }
+    }
+    out[y] = sum / count;
+  }
+  return out;
+}
+
+function brightestAbove(values, end) {
+  let max = values[0];
+  for (let y = 0; y < Math.max(1, end); y++) max = Math.max(max, values[y]);
+  return max;
+}
+
+/** Row of the steepest one-row rise within the 6 rows after `start`. */
+function steepestRise(values, start) {
+  let row = start + 1, steepest = -Infinity;
+  for (let y = start; y < start + 6; y++) {
+    const rise = values[y + 1] - values[y];
+    if (rise > steepest) { steepest = rise; row = y + 1; }
+  }
+  return row;
+}
+
+// ===== Wave detector =============================================================================
+
+// Turns new white water into waves.
+//
+// A run of snapshots with new white water is one "event". Early in the event (before spray inflates the crest and
+// foam hides the face) the page keeps its biggest view: trough and crest measured at full resolution, a snapshot,
+// and where it sits in the scene. Shortly after, the event is checked:
+//   - the white must still be there (foam stays where a wave broke; a gull or board moves on),
+//   - it must not slide toward the shore (swash or rolling foam),
+//   - it must be at least 1.5 m wide and 15 cm tall.
+// Detections of the same wave (a peeling wave breaks along its length) are collected as views of one wave.
+
+const EVENT_MAX_MS = 1500;           // an event ends this long after it starts…
+const EVENT_QUIET_MS = 500;          // …or this long after its last new white
+const MIN_EVENT_SNAPSHOTS = 2;
+const BIGGEST_VIEW_WITHIN_MS = 800;  // later views are inflated by spray and hide the face
+const CHECK_AFTER_MS = 700;          // look again this long after the biggest view
+const MIN_STAYED = 0.3;              // real breakers keep ~40–60 % of their white after 0.7 s; a passing gull ~0 %
+const CAMERA_MOVED = 0.1;            // fraction of frame width; beyond this the stay check can't be trusted
+const MIN_WIDTH_M = 1.5;
+const MIN_HEIGHT_M = 0.15;
+const MIN_PATCH_ROWS = 3;
+const SAME_WAVE_X = 0.6;             // fraction of frame width, in scene coordinates
+const SAME_WAVE_MS = 4000;
+const HOLD_MS = 2500;                // wait this long for more views of a wave before offering it
+
+class WaveDetector {
+  /**
+   * @param source  the camera video (for full-resolution measurement and snapshots)
+   * @param onWave  called with { views } for each detected wave; each view is
+   *                { trough, crest, horizon, snapshot, note, start }
+   */
+  constructor({ source, onWave }) {
+    this.source = source;
+    this.onWave = onWave;
+    this.white = new WhiteWater();
+    /** With Confirm on, a wave that couldn't be double-checked goes to the user instead of being dropped. */
+    this.offerUnverified = true;
+    this.sceneX = 0;            // sum of sideways camera shifts: positions comparable across pans
+    this.event = null;
+    this.pending = [];
+    this.held = null;
+    this.lastOffered = null;
+    this.live = null;           // { trough, crest } of the wave breaking right now, for the overlay
+    this.analysis = null;       // last white-water analysis, for the debug view
+    this.debug = { state: '', ignored: 0, lastReject: null, patchBox: null, measured: null, checks: [] };
+  }
+
+  get isBreaking() {
+    return this.event !== null;
+  }
+
+  /** Start over after an interruption (camera restarted, calibration, Auto toggled). */
+  restart() {
+    this.white.reset();
+    this.event = null;
+    this.live = null;
+  }
+
+  /** Also drop waves still being checked or collected (a new camera session). */
+  restartAll() {
+    this.restart();
+    this.pending = [];
+    this.held = null;
+  }
+
+  /** The user skipped a wave in review. */
+  countSkipped() {
+    this.debug.ignored++;
+  }
+
+  /**
+   * One snapshot.
+   * @param image       downscaled frame { data, width, height }
+   * @param brightness  per-pixel brightness of that frame
+   * @param horizon     this snapshot's horizon, or null
+   * @param horizonSeen whether any horizon is known (shown) at all
+   * @param motion      { dx, dy, moving } camera motion since the last snapshot (analysis pixels)
+   * @param view        the camera View, for heights and widths
+   * @param auto        whether automatic detection is on
+   */
+  update({ image, brightness, horizon, horizonSeen, motion, view, auto, now }) {
+    this.followCamera(motion.dx, motion.dy);
+    if (this.held && now > this.held.until) this.offerHeld();
+
+    if (motion.moving && auto && horizon) {
+      this.pause('camera moving, paused', true);
+      return;
+    }
+    if (!auto || !horizon) {
+      if (!auto || !horizonSeen) { this.white.reset(); this.event = null; this.pending = []; }
+      this.pause(auto ? 'no horizon' : 'auto off', false);
+      return;
+    }
+
+    const analysis = this.white.analyse(image, brightness, horizon, motion.dx, motion.dy);
+    this.analysis = analysis;
+    if (!analysis) return;                               // background just seeded
+    const isNew = this.describe(analysis, image);
+    this.live = null;
+    if (isNew) this.observe(analysis, image, horizon, view, now);
+    this.closeEventIfOver(now);
+    this.checkPending(analysis.white, image, view, now);
+  }
+
+  pause(state, forgetEvent) {
+    if (forgetEvent) { this.white.reset(); this.event = null; }
+    this.live = null;
+    this.analysis = null;
+    this.debug.patchBox = null;
+    this.debug.state = state;
+  }
+
+  followCamera(dx, dy) {
+    this.sceneX += dx;
+    for (const e of [this.event, ...this.pending]) {
+      if (e) { e.shift.x += dx; e.shift.y += dy; }
+    }
+  }
+
+  /** Whether the largest new patch looks like a new break; records what was decided for the debug view. */
+  describe(analysis, image) {
+    const { patch } = analysis;
+    const minArea = Math.max(20, image.width * image.height * 0.0004);
+    const bigEnough = patch && patch.area >= minArea && patch.tallest.extent >= MIN_PATCH_ROWS;
+    const isNew = Boolean(bigEnough && !analysis.grownFromFoam);
+    this.debug.patchBox = patch && toFrameBox(patch.bounds(), image);
+    this.debug.state = !patch ? 'no new white'
+      : !bigEnough ? `too small (${patch.area} px)`
+      : !isNew ? 'old foam, ignored'
+      : 'NEW WAVE';
+    return isNew;
+  }
+
+  // ---------- events ----------
+
+  observe(analysis, image, horizon, view, now) {
+    const { patch } = analysis;
+    if (!this.event) this.event = { start: now, last: now, snapshots: 0, best: null, shift: { x: 0, y: 0 }, widthMax: 0, track: [] };
+    const e = this.event;
+    e.snapshots++;
+    e.last = now;
+    e.widthMax = Math.max(e.widthMax, patchWidth(patch, image, horizon, view));
+    const box = patch.bounds();
+    e.track.push({ top: box.y0 - e.shift.y, bottom: box.y1 - e.shift.y, rows: patch.tallest.extent });
+    const isBigger = !e.best || (patch.tallest.extent > e.best.rows && now - e.start <= BIGGEST_VIEW_WITHIN_MS);
+    if (isBigger) e.best = this.captureView(analysis, image, horizon, now);
+    this.live = { trough: e.best.trough, crest: e.best.crest };
+  }
+
+  /** The view of the wave at this moment: measured at full resolution, with a snapshot to review. */
+  captureView(analysis, image, horizon, now) {
+    const { patch, threshold } = analysis;
+    const t = patch.tallest;
+    const measured = measureAtFullResolution(this.source, patch, image.width, image.height, threshold);
+    if (measured) this.debug.measured = { ...measured, at: now };
+    const x = (t.x + 0.5) / image.width;
+    return {
+      rows: t.extent,
+      trough: measured ? measured.trough : { x, y: (t.bottom + 1) / image.height },
+      crest: measured ? measured.crest : { x, y: t.top / image.height },
+      horizon: horizon.map(p => ({ ...p })),
+      snapshot: snapshot(this.source),
+      sceneX: t.x + 0.5 - this.sceneX,
+      pixels: patch.pixels,
+      shiftThen: { ...this.event.shift },
+      time: now,
+    };
+  }
+
+  closeEventIfOver(now) {
+    const e = this.event;
+    if (!e || (now - e.start <= EVENT_MAX_MS && now - e.last <= EVENT_QUIET_MS)) return;
+    if (e.snapshots >= MIN_EVENT_SNAPSHOTS) {
+      const sinceBest = { x: e.shift.x - e.best.shiftThen.x, y: e.shift.y - e.best.shiftThen.y };
+      this.pending.push({ ...e, shift: sinceBest, checkAt: Math.max(now, e.best.time + CHECK_AFTER_MS) });
+    }
+    this.event = null;
+  }
+
+  // ---------- checks ----------
+
+  checkPending(white, image, view, now) {
+    this.pending = this.pending.filter(e => {
+      if (now < e.checkAt) return true;
+      const verdict = this.judge(e, white, image, view);
+      if (verdict.reject) this.reject(verdict.reject, now);
+      else this.collect(verdict.wave, e, image, now);
+      return false;
+    });
+  }
+
+  /** { wave } if the event passes the checks, else { reject: reason }. */
+  judge(e, white, image, view) {
+    const stay = stayedFraction(e, white, image);
+    const slide = slideTowardShore(e.track);
+    const best = e.best;
+    const measured = view.measureWave(best.trough, best.crest, best.horizon);
+    this.debug.checks.push({ stayed: stay.fraction, width: e.widthMax, ...slide, height: measured ? measured.height : null, x: best.trough.x });
+
+    // If the white left the view or the camera moved a lot, the stay check can't tell: let the user decide.
+    const cameraMoved = Math.hypot(e.shift.x, e.shift.y) > CAMERA_MOVED * image.width;
+    const unverified = !stay.inView || (cameraMoved && stay.fraction < MIN_STAYED);
+    if (unverified && !this.offerUnverified) return { reject: stay.inView ? 'camera moved' : 'left the frame' };
+    if (!unverified && stay.fraction < MIN_STAYED) return { reject: `moved away (${Math.round(stay.fraction * 100)}% stayed)` };
+    if (slide.slid) return { reject: 'slid toward the shore (swash or rolling foam)' };
+    if (e.widthMax < MIN_WIDTH_M) return { reject: `too narrow (${e.widthMax.toFixed(1)} m)` };
+    if (!measured) return { reject: 'could not measure' };
+    if (measured.height < MIN_HEIGHT_M) return { reject: `too small (${Math.round(measured.height * 100)} cm)` };
+    const note = !unverified ? null
+      : stay.inView ? "Couldn't double-check this one: the camera moved." : "Couldn't double-check this one: it left the view.";
+    return { wave: { trough: best.trough, crest: best.crest, horizon: best.horizon, snapshot: best.snapshot, note, start: e.start } };
+  }
+
+  reject(reason, now) {
+    this.debug.ignored++;
+    this.debug.lastReject = { reason, at: now };
+  }
+
+  // ---------- one wave, several views ----------
+
+  /** Adds a checked wave to the wave being collected, or starts a new one. */
+  collect(wave, e, image, now) {
+    const sceneX = e.best.sceneX;
+    const isSame = other => other
+      && Math.abs(sceneX - other.sceneX) < SAME_WAVE_X * image.width
+      && Math.abs(e.start - other.start) < SAME_WAVE_MS;
+    if (isSame(this.lastOffered)) {
+      this.reject('same wave as the last one', now);
+    } else if (isSame(this.held)) {
+      this.held.views.push(wave);
+      this.reject('same wave, added as another view', now);
+    } else {
+      if (this.held) this.offerHeld();
+      this.held = { sceneX, start: e.start, until: now + HOLD_MS, views: [wave] };
+    }
+  }
+
+  offerHeld() {
+    const { sceneX, start, views } = this.held;
+    this.held = null;
+    this.lastOffered = { sceneX, start };
+    this.onWave({ views: views.sort((a, b) => a.start - b.start) });
+  }
+}
+
+/**
+ * Share of the event's white pixels (at its biggest view) that are white again now, at the best offset within a small
+ * window around where the camera shift says they should be: ±4 px absorbs shake-estimate drift, +10 px down allows
+ * foam creeping toward the shore. `inView` is false when less than half of them are inside the frame at any offset.
+ */
+function stayedFraction(e, white, image) {
+  const { width, height } = image, pixels = e.best.pixels;
+  let fraction = 0, inView = false;
+  for (let oy = -4; oy <= 10; oy++) {
+    for (let ox = -4; ox <= 4; ox++) {
+      let inside = 0, stayed = 0;
+      for (const j of pixels) {
+        const x = j % width + e.shift.x + ox, y = ((j / width) | 0) + e.shift.y + oy;
+        if (x < 0 || x >= width || y < 0 || y >= height) continue;
+        inside++;
+        if (white[y * width + x]) stayed++;
+      }
+      if (inside < pixels.length * 0.5) continue;
+      inView = true;
+      fraction = Math.max(fraction, stayed / inside);
+    }
+  }
+  return { fraction, inView };
+}
+
+/** Did the white region slide toward the camera by more than half its height (swash, rolling foam)? */
+function slideTowardShore(track) {
+  const first = track[0], last = track[track.length - 1];
+  const rows = Math.max(1, ...track.map(t => t.rows));
+  const topMoved = last.top - first.top, bottomMoved = last.bottom - first.bottom;
+  return { topMoved, bottomMoved, slid: topMoved > Math.max(6, 0.5 * rows) || bottomMoved > Math.max(12, rows) };
+}
+
+/** Width of the patch in metres, at the distance of the bottom of its tallest column. */
+function patchWidth(patch, image, horizon, view) {
+  const t = patch.tallest, box = patch.bounds();
+  const bottom = { x: (t.x + 0.5) / image.width, y: (t.bottom + 1) / image.height };
+  const distance = view.waterDistance(bottom, horizon);
+  if (distance === Infinity) return Infinity;
+  return view.widthAt((box.x1 - box.x0 + 1) * view.width / image.width, distance);
+}
+
+function toFrameBox(box, image) {
+  return {
+    x: box.x0 / image.width, y: box.y0 / image.height,
+    w: (box.x1 - box.x0 + 1) / image.width, h: (box.y1 - box.y0 + 1) / image.height,
+  };
+}
+
+// ===== Overlay drawing ===========================================================================
+
+// The overlay canvas over the camera video, and drawing on it.
+// The video is letterboxed (object-fit: contain); frame points are normalised (0–1) across the camera frame.
+
+const COLORS = {
+  horizon: '#f0a24a',
+  horizonWeak: 'rgba(255,122,107,.8)',
+  wave: '#3cc3cf',
+  waveFaded: 'rgba(60,195,207,.55)',
+  person: '#ffe26e',
+  live: '#ffffff',
+};
+
+class Screen {
+  constructor(canvas, video) {
+    this.canvas = canvas;
+    this.video = video;
+    this.context = canvas.getContext('2d');
+  }
+
+  /** Match the canvas resolution to its size on screen. */
+  fit() {
+    const rect = this.canvas.getBoundingClientRect();
+    this.canvas.width = rect.width * devicePixelRatio;
+    this.canvas.height = rect.height * devicePixelRatio;
+  }
+
+  /** Canvas pixels per CSS pixel: line widths and font sizes scale with it. */
+  get scale() {
+    return devicePixelRatio;
+  }
+
+  /** Where the camera frame sits on the canvas: { x, y, w, h } in canvas pixels. */
+  frameBox() {
+    const { width, height } = this.canvas;
+    const vw = this.video.videoWidth || width, vh = this.video.videoHeight || height;
+    const k = Math.min(width / vw, height / vh);
+    return { x: (width - vw * k) / 2, y: (height - vh * k) / 2, w: vw * k, h: vh * k };
+  }
+
+  /** Frame point → canvas pixel [x, y]. */
+  toCanvas(p) {
+    const b = this.frameBox();
+    return [b.x + p.x * b.w, b.y + p.y * b.h];
+  }
+
+  /** Pointer event → frame point. */
+  fromPointer(event) {
+    const rect = this.canvas.getBoundingClientRect(), b = this.frameBox();
+    return {
+      x: ((event.clientX - rect.left) * devicePixelRatio - b.x) / b.w,
+      y: ((event.clientY - rect.top) * devicePixelRatio - b.y) / b.h,
+    };
+  }
+
+  /** Index of the point nearest to p, measured on screen. */
+  nearest(points, p) {
+    let best = 0, bestDistance = Infinity;
+    points.forEach((q, i) => {
+      const d = Math.hypot((q.x - p.x) * this.canvas.width, (q.y - p.y) * this.canvas.height);
+      if (d < bestDistance) { bestDistance = d; best = i; }
+    });
+    return best;
+  }
+
+  clear() {
+    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  drawImage(image) {
+    const b = this.frameBox();
+    this.context.drawImage(image, b.x, b.y, b.w, b.h);
+  }
+
+  /** A line across the whole frame width, through the two points of `line`. */
+  lineAcross(line, color, width, dash = []) {
+    const ctx = this.context, b = this.frameBox(), s = this.scale;
+    const yAt = x => b.y + horizonY(line, (x - b.x) / b.w) * b.h;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width * s;
+    ctx.setLineDash(dash.map(d => d * s));
+    ctx.beginPath();
+    ctx.moveTo(b.x, yAt(b.x));
+    ctx.lineTo(b.x + b.w, yAt(b.x + b.w));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  horizon(line, confident) {
+    this.lineAcross(line, confident ? COLORS.horizon : COLORS.horizonWeak, 2, [10, 6]);
+  }
+
+  /** Dots for the points, joined by a line when there are two (a wave's trough and crest). */
+  marks(points, color, dash = []) {
+    const ctx = this.context, s = this.scale, width = 3 * s;
+    ctx.strokeStyle = ctx.fillStyle = color;
+    ctx.lineWidth = width;
+    ctx.setLineDash(dash.map(d => d * s));
+    for (const p of points) {
+      const [x, y] = this.toCanvas(p);
+      ctx.beginPath();
+      ctx.arc(x, y, width * 2, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+    if (points.length === 2) {
+      ctx.beginPath();
+      ctx.moveTo(...this.toCanvas(points[0]));
+      ctx.lineTo(...this.toCanvas(points[1]));
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  /**
+   * A frozen image with draggable handles: the image, its horizon, the handles with labels,
+   * and a magnifier above the handle being dragged (a finger covers what it touches).
+   */
+  handles({ image, horizon, points, labels, color, dragging }) {
+    this.drawImage(image);
+    if (horizon) this.lineAcross(horizon, COLORS.horizon, 2, [10, 6]);
+    const ctx = this.context, s = this.scale;
+    if (points.length === 2) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3 * s;
+      ctx.beginPath();
+      ctx.moveTo(...this.toCanvas(points[0]));
+      ctx.lineTo(...this.toCanvas(points[1]));
+      ctx.stroke();
+    }
+    ctx.font = `600 ${13 * s}px system-ui,sans-serif`;
+    ctx.textBaseline = 'middle';
+    points.forEach((p, i) => {
+      const [x, y] = this.toCanvas(p);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2 * s;
+      ctx.beginPath();
+      ctx.arc(x, y, 11 * s, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.stroke();
+      if (labels[i]) { ctx.fillStyle = '#fff'; ctx.fillText(labels[i], x + 16 * s, y); }
+    });
+    if (dragging != null && points[dragging]) this.magnifier(image, points[dragging], color);
+  }
+
+  /** 3× magnified circle above (or below, near the top) a point, with a crosshair on it. */
+  magnifier(image, p, color) {
+    const ctx = this.context, s = this.scale, b = this.frameBox();
+    const [x, y] = this.toCanvas(p);
+    const radius = 58 * s, zoom = 3;
+    const sourceSize = 2 * radius / (b.w / image.width * zoom);
+    const cy = y - 100 * s - radius < 0 ? y + 100 * s : y - 100 * s;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, cy, radius, 0, 2 * Math.PI);
+    ctx.clip();
+    ctx.drawImage(image, p.x * image.width - sourceSize / 2, p.y * image.height - sourceSize / 2, sourceSize, sourceSize,
+      x - radius, cy - radius, 2 * radius, 2 * radius);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5 * s;
+    ctx.beginPath();
+    ctx.moveTo(x - radius, cy); ctx.lineTo(x + radius, cy);
+    ctx.moveTo(x, cy - radius); ctx.lineTo(x, cy + radius);
+    ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3 * s;
+    ctx.beginPath();
+    ctx.arc(x, cy, radius, 0, 2 * Math.PI);
+    ctx.stroke();
+  }
+}
+
+// ===== Reviewing detected waves ==================================================================
+
+// Confirming detected waves: each one is shown frozen, with crest and trough handles to adjust.
+// A wave seen several times (it peels along its length) has several views; the earliest opens first,
+// because it shows the face before spray and foam do.
+
+/** One detected wave waiting for confirmation. */
+class Review {
+  constructor(views) {
+    this.views = views;
+    this.index = 0;
+  }
+
+  get view() {
+    return this.views[this.index];
+  }
+
+  get points() {
+    return [this.view.trough, this.view.crest];
+  }
+
+  /** Shows view i; the first time, moves the trough from the white lip down to the face's base if it can. */
+  select(i) {
+    this.index = i;
+    const v = this.view;
+    if (!v.troughGuessed) {
+      v.trough = guessTrough(v.snapshot, v.trough, v.crest);
+      v.troughGuessed = true;
+    }
+  }
+
+  /** Point 0 is the trough, point 1 the crest. */
+  movePoint(i, p) {
+    if (i === 0) this.view.trough = p; else this.view.crest = p;
+  }
+}
+
+/** The review sheet: texts, view switcher, Save and Skip. */
+class ReviewSheet {
+  constructor(ui, { onSave, onSkip, onStep }) {
+    this.ui = ui;
+    ui.reviewSave.onclick = onSave;
+    ui.reviewSkip.onclick = onSkip;
+    ui.reviewPrev.onclick = () => onStep(-1);
+    ui.reviewNext.onclick = () => onStep(+1);
+  }
+
+  hide() {
+    this.ui.review.hidden = true;
+  }
+
+  /**
+   * @param review       the Review shown
+   * @param waiting      how many more waves are queued
+   * @param measurement  { height, distance } or null
+   * @param format       metres → text
+   */
+  show(review, waiting, measurement, format) {
+    const ui = this.ui, n = review.views.length, i = review.index;
+    ui.review.hidden = false;
+    ui.reviewViews.hidden = n < 2;
+    ui.reviewViewIndex.textContent = `view ${i + 1} of ${n}`;
+    ui.reviewPrev.disabled = i === 0;
+    ui.reviewNext.disabled = i === n - 1;
+    ui.reviewText.textContent = instructions(review.view.note, n, waiting);
+    ui.reviewHeight.textContent = measurement == null ? 'Trough must be below the horizon'
+      : format(measurement.height) + (measurement.distance != null ? `  @ ${measurement.distance.toFixed(0)} m` : '');
+  }
+}
+
+function instructions(note, views, waiting) {
+  const unverified = note ? `${note} Skip it if it isn’t a breaking wave. ` : '';
+  const which = views > 1 ? ', on the view where the wave is clearest.' : '.';
+  const queue = waiting ? ` (${waiting} more waiting)` : '';
+  return `${unverified}Drag the handles onto the crest and trough${which}${queue}`;
+}
+
+// ===== Calibration ===============================================================================
+
+// Calibrating the phone height from a person of known height standing at the water's edge:
+// freeze a frame, tap their feet and head, enter their height.
+
+class Calibration {
+  constructor(snapshot, horizon) {
+    this.snapshot = snapshot;
+    this.horizon = horizon;
+    this.points = [];
+  }
+
+  get isComplete() {
+    return this.points.length === 2;
+  }
+
+  /** The lower point is the feet. */
+  feetAndHead() {
+    const [a, b] = this.points;
+    return a.y > b.y ? [a, b] : [b, a];
+  }
+
+  labels() {
+    if (!this.isComplete) return ['feet'];
+    return this.points[0].y > this.points[1].y ? ['feet', 'head'] : ['head', 'feet'];
+  }
+
+  /** Phone height in metres for a person `personHeight` metres tall, or null. */
+  phoneHeight(view, personHeight) {
+    if (!this.isComplete) return null;
+    const [feet, head] = this.feetAndHead();
+    return phoneHeightFromPerson(view, feet, head, this.horizon, personHeight);
+  }
+}
+
+/** The calibration sheet: instructions, the height field, Apply and Cancel. */
+class CalibrationSheet {
+  constructor(ui, { onApply, onCancel, onHeightInput }) {
+    this.ui = ui;
+    ui.calibrationApply.onclick = onApply;
+    ui.calibrationCancel.onclick = onCancel;
+    ui.calibrationHeight.oninput = onHeightInput;
+  }
+
+  open(units) {
+    const ui = this.ui;
+    ui.calibration.hidden = false;
+    ui.calibrationHeightLabel.hidden = true;
+    ui.calibrationApply.hidden = true;
+    ui.calibrationUnit.textContent = units;
+    ui.calibrationHeight.value = units === 'ft' ? '5.4' : '165';
+    ui.calibrationHeight.step = units === 'ft' ? '0.1' : '1';
+    this.say("Tap the feet of a person standing at the water's edge");
+  }
+
+  close() {
+    this.ui.calibration.hidden = true;
+  }
+
+  /** The typed height, in the current units. */
+  get personHeight() {
+    return +this.ui.calibrationHeight.value;
+  }
+
+  askForHead() {
+    this.say('Tap the top of their head');
+  }
+
+  askForHeight() {
+    this.ui.calibrationHeightLabel.hidden = false;
+    this.ui.calibrationApply.hidden = false;
+  }
+
+  /** Shows the phone height these taps give (or why there's none). */
+  preview(phoneHeightText) {
+    this.say(phoneHeightText
+      ? `Phone height would be ${phoneHeightText}. Drag the dots onto feet and head if needed.`
+      : 'Feet must be below the horizon. Drag the dots onto feet and head.');
+  }
+
+  say(text) {
+    this.ui.calibrationText.textContent = text;
+  }
+}
+
+// ===== Height reminder ===========================================================================
+
+// Reminding the user to re-measure the phone height when it has probably changed.
+// Every reading scales with phone height, so the page asks when: it was never set, the phone was raised or
+// lowered by more than 20 cm, the user walked around, or 20 minutes passed (the tide moves the water level).
+
+const REMIND_AFTER_MS = 20 * 60e3;
+const SNOOZE_MS = 15 * 60e3;
+const DRIFT_M = 0.2;
+
+/** Most important first: a later, less important reminder doesn't replace a shown one. */
+const PRIORITY = { notset: 0, time: 1, moved: 2, drift: 2 };
+
+// ---------- vertical moves from the accelerometer ----------
+
+const MOVE_STARTS = 0.6;     // m/s² of upward acceleration
+const STILL_BELOW = 0.3;     // m/s²
+const STILL_FOR_S = 0.3;
+const WALKING_S = 2;         // a move this long is walking or moving around, not a raise
+const LONGEST_MOVE_S = 4;
+
+/**
+ * Net vertical moves of the phone: upward acceleration is integrated during a short move, and the phone is
+ * assumed to be at rest again when the move ends (zero-velocity reset), which keeps sensor drift out.
+ * Turning the phone to aim is rotation, not lift, so it doesn't count.
+ */
+class VerticalMoves {
+  constructor() {
+    this.up = null;      // gravity direction, slowly low-pass filtered
+    this.move = null;    // the move in progress: { seconds, speed, rise, stillFor }
+  }
+
+  reset() {
+    this.move = null;
+  }
+
+  /** Feeds one devicemotion event. Returns { rise } or { walked: true } when a move ends, else null. */
+  add(event) {
+    const gravity = event.accelerationIncludingGravity, linear = event.acceleration;
+    if (!gravity || gravity.x == null || !linear || linear.x == null) return null;   // needs gravity-free acceleration
+    const dt = Math.min(0.1, Math.max(0.001, (event.interval || 16) / 1000));
+    const upward = this.upwardAcceleration(gravity, linear, dt);
+
+    if (!this.move) {
+      if (Math.abs(upward) > MOVE_STARTS) this.move = { seconds: 0, speed: upward * dt, rise: 0, stillFor: 0 };
+      return null;
+    }
+    const m = this.move;
+    m.seconds += dt;
+    m.speed += upward * dt;
+    m.rise += m.speed * dt;
+    m.stillFor = Math.abs(upward) < STILL_BELOW ? m.stillFor + dt : 0;
+    if (m.stillFor < STILL_FOR_S && m.seconds <= LONGEST_MOVE_S) return null;
+    this.move = null;
+    return m.seconds > WALKING_S ? { walked: true } : { rise: m.rise };
+  }
+
+  upwardAcceleration(gravity, linear, dt) {
+    if (!this.up) {
+      this.up = { x: gravity.x, y: gravity.y, z: gravity.z };
+    } else {
+      const k = Math.min(1, dt * 1.5);
+      this.up.x += k * (gravity.x - this.up.x);
+      this.up.y += k * (gravity.y - this.up.y);
+      this.up.z += k * (gravity.z - this.up.z);
+    }
+    const length = Math.hypot(this.up.x, this.up.y, this.up.z) || 9.81;
+    return (linear.x * this.up.x + linear.y * this.up.y + linear.z * this.up.z) / length;
+  }
+}
+
+// ---------- the reminder ----------
+
+class HeightReminder {
+  /**
+   * @param canPrompt  false while something else needs the user (a wave review, calibration)
+   * @param onChange   called when the reminder appears or goes away
+   */
+  constructor({ canPrompt, onChange }) {
+    this.canPrompt = canPrompt;
+    this.onChange = onChange;
+    this.moves = new VerticalMoves();
+    this.heightSetAt = null;
+    this.snoozedUntil = 0;
+    this.netRise = 0;           // metres the phone moved up since the height was set
+    this.kind = null;           // 'notset' | 'time' | 'moved' | 'drift' | null
+    this.dismissed = {};
+    addEventListener('devicemotion', event => this.onMotion(event));
+  }
+
+  markHeightSet(now = performance.now()) {
+    this.heightSetAt = now;
+    this.netRise = 0;
+    this.moves.reset();
+    this.kind = null;
+    this.dismissed = {};
+    this.onChange();
+  }
+
+  /** Called shortly after the camera starts. */
+  remindIfNotSet() {
+    if (this.heightSetAt === null) this.show('notset');
+  }
+
+  /** The time reminder; checked whenever the status is refreshed. */
+  checkTime(now) {
+    if (this.heightSetAt !== null && now - this.heightSetAt > REMIND_AFTER_MS && now > this.snoozedUntil && !this.kind) {
+      this.kind = 'time';
+    }
+  }
+
+  onMotion(event) {
+    const result = this.moves.add(event);
+    if (!result) return;
+    if (result.walked) {
+      if (this.heightSetAt !== null) this.show('moved');
+      return;
+    }
+    this.netRise += result.rise;
+    if (this.heightSetAt !== null && Math.abs(this.netRise) > DRIFT_M) this.show('drift');
+  }
+
+  show(kind) {
+    if (this.dismissed[kind] || !this.canPrompt()) return;
+    if (this.kind && PRIORITY[this.kind] > PRIORITY[kind]) return;
+    this.kind = kind;
+    this.onChange();
+  }
+
+  /** "Later" / "It's fine" / "Same height" / "Not now". */
+  dismiss(now = performance.now()) {
+    if (this.kind === 'time') this.snoozedUntil = now + SNOOZE_MS;
+    else if (this.kind === 'drift' || this.kind === 'moved') this.netRise = 0;
+    if (this.kind === 'notset') this.dismissed.notset = true;
+    this.kind = null;
+    this.onChange();
+  }
+
+  /** The user chose to measure again. */
+  accept() {
+    this.kind = null;
+    this.onChange();
+  }
+
+  /** Texts for the reminder sheet: { message, later, go }. */
+  texts({ phoneHeight, canUseAr, format }) {
+    switch (this.kind) {
+      case 'notset': return {
+        message: `Readings assume your phone is ${format(phoneHeight)} above the water. Set your real height first: `
+          + `${canUseAr ? 'Measure aims at the water’s edge' : 'Calibrate uses a person of known height'}, or use the slider.`,
+        later: 'Not now', go: canUseAr ? 'Measure' : 'Calibrate',
+      };
+      case 'time': return {
+        message: '20 minutes since you set the height. The tide may have moved the water level.',
+        later: 'Later', go: 'Re-measure',
+      };
+      case 'moved': return {
+        message: 'You moved around. If you’re at a new spot or holding the phone differently, re-measure.',
+        later: 'Same height', go: 'Re-measure',
+      };
+      case 'drift': return {
+        message: `The phone seems about ${format(Math.abs(this.netRise))} ${this.netRise > 0 ? 'higher' : 'lower'} than when you set the height. Hold it back there, or re-measure.`,
+        later: 'It’s fine', go: 'Re-measure',
+      };
+      default: return null;
+    }
+  }
+}
+
+// ===== AR drawing ================================================================================
+
+// WebGL drawing for the AR measurement, in the detected surface's own frame (y axis = surface normal):
+// a 1 m grid with 10 cm lines lying on the surface, an aiming ring at the hit point,
+// and in debug mode a 30 cm post along the surface normal.
+
+const VERTEX_SHADER = 'attribute vec3 p;uniform mat4 mvp;void main(){gl_Position=mvp*vec4(p,1.0);}';
+const FRAGMENT_SHADER = 'precision mediump float;uniform vec4 col;void main(){gl_FragColor=col;}';
+
+const GRID_COLOR = { level: [1, 1, 1, 0.6], tilted: [1, 1, 1, 0.25] };
+const RING_COLOR = { level: [0.235, 0.765, 0.812, 0.95], tilted: [1, 0.478, 0.42, 0.95] };
+const POST_COLOR = [1, 0.89, 0.43, 1];
+
+class SurfaceMarker {
+  constructor(gl) {
+    this.gl = gl;
+    this.program = linkProgram(gl, VERTEX_SHADER, FRAGMENT_SHADER);
+    this.position = gl.getAttribLocation(this.program, 'p');
+    this.mvp = gl.getUniformLocation(this.program, 'mvp');
+    this.color = gl.getUniformLocation(this.program, 'col');
+    this.grid = vertexBuffer(gl, gridLines());
+    this.ring = vertexBuffer(gl, ringStrip());
+    this.post = vertexBuffer(gl, normalPost());
+  }
+
+  /**
+   * @param projection  the view's projection matrix
+   * @param viewInverse the inverse of the view's pose
+   * @param surface     the hit pose's matrix (surface frame)
+   * @param level       whether the surface is level enough to measure on
+   * @param showNormal  draw the surface normal (debug)
+   */
+  draw(projection, viewInverse, surface, level, showNormal) {
+    const gl = this.gl;
+    gl.useProgram(this.program);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.enableVertexAttribArray(this.position);
+    gl.uniformMatrix4fv(this.mvp, false, multiply(projection, multiply(viewInverse, surface)));
+    this.drawBuffer(this.grid, gl.LINES, level ? GRID_COLOR.level : GRID_COLOR.tilted);
+    this.drawBuffer(this.ring, gl.TRIANGLE_STRIP, level ? RING_COLOR.level : RING_COLOR.tilted);
+    if (showNormal) {
+      this.drawBuffer(this.post, gl.TRIANGLE_STRIP, POST_COLOR, 0, 4);
+      this.drawBuffer(this.post, gl.TRIANGLE_STRIP, POST_COLOR, 4, 4);
+    }
+  }
+
+  drawBuffer(buffer, mode, color, first = 0, count = buffer.count) {
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer.id);
+    gl.vertexAttribPointer(this.position, 3, gl.FLOAT, false, 0, 0);
+    gl.uniform4f(this.color, ...color);
+    gl.drawArrays(mode, first, count);
+  }
+}
+
+/** 11 + 11 lines, 10 cm apart, across a 1 m square. */
+function gridLines() {
+  const v = [];
+  for (let i = -5; i <= 5; i++) {
+    const t = i / 10;
+    v.push(-0.5, 0, t, 0.5, 0, t, t, 0, -0.5, t, 0, 0.5);
+  }
+  return v;
+}
+
+/** A ring from 10 to 14 cm radius, as a triangle strip. */
+function ringStrip() {
+  const v = [];
+  for (let i = 0; i <= 48; i++) {
+    const a = i / 48 * 2 * Math.PI, c = Math.cos(a), s = Math.sin(a);
+    v.push(c * 0.10, 0, s * 0.10, c * 0.14, 0, s * 0.14);
+  }
+  return v;
+}
+
+/** Two crossed 2 cm-wide strips, 30 cm up the normal. */
+function normalPost() {
+  return [
+    -0.01, 0, 0, 0.01, 0, 0, -0.01, 0.3, 0, 0.01, 0.3, 0,
+    0, 0, -0.01, 0, 0, 0.01, 0, 0.3, -0.01, 0, 0.3, 0.01,
+  ];
+}
+
+function linkProgram(gl, vertexSource, fragmentSource) {
+  const program = gl.createProgram();
+  gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, vertexSource));
+  gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, fragmentSource));
+  gl.linkProgram(program);
+  return program;
+}
+
+function compile(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  return shader;
+}
+
+function vertexBuffer(gl, vertices) {
+  const id = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, id);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+  return { id, count: vertices.length / 3 };
+}
+
+/** a · b for column-major 4×4 matrices. */
+function multiply(a, b) {
+  const out = new Float32Array(16);
+  for (let col = 0; col < 4; col++) {
+    for (let row = 0; row < 4; row++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) sum += a[k * 4 + row] * b[col * 4 + k];
+      out[col * 4 + row] = sum;
+    }
+  }
+  return out;
+}
+
+// ===== AR measurement ============================================================================
+
+// Measuring the phone height with AR (WebXR hit test, Android Chrome with ARCore).
+// The user aims a ring at the wet sand where the waves stop; the height above that spot is the
+// phone's height above the water. The reading is taken once 30 frames agree within 2 cm.
+
+const SAMPLES = 30;
+const AGREE_M = 0.02;
+const TIMEOUT_MS = 20000;
+const LEVEL = 0.95;           // cos of the largest surface tilt accepted (~18°)
+
+async function isArSupported() {
+  try {
+    return Boolean(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar'));
+  } catch {
+    return false;
+  }
+}
+
+class ArHeightMeasure {
+  /**
+   * @param ui           the AR overlay elements
+   * @param format       metres → text
+   * @param showDebug    () => whether to show debug details
+   */
+  constructor(ui, { format, showDebug }) {
+    this.ui = ui;
+    this.format = format;
+    this.showDebug = showDebug;
+  }
+
+  /**
+   * Runs one measurement. Resolves to { height } (metres), { timedOut: true } or { cancelled: true };
+   * rejects if the AR session can't start. The camera must be released first: ARCore needs it to itself.
+   */
+  async measure() {
+    const session = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: { root: this.ui.arOverlay },
+    });
+    this.ui.arOverlay.hidden = false;
+    this.ui.arValue.textContent = '–';
+    let run;
+    try {
+      run = await this.startRun(session);
+    } catch (error) {
+      this.ui.arOverlay.hidden = true;
+      session.end().catch(() => {});
+      throw error;
+    }
+    const outcome = await run.finished;
+    this.ui.arOverlay.hidden = true;
+    return outcome;
+  }
+
+  async startRun(session) {
+    const gl = document.createElement('canvas').getContext('webgl', { xrCompatible: true });
+    session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+    const space = await session.requestReferenceSpace('local');
+    const viewer = await session.requestReferenceSpace('viewer');
+    const hitSource = await planeHitSource(session, viewer);
+    const run = new MeasurementRun({ session, gl, space, hitSource, ui: this.ui, format: this.format, showDebug: this.showDebug });
+    this.ui.arCancel.onclick = () => run.finish({ cancelled: true });
+    run.start();
+    return run;
+  }
+}
+
+/** Hit test against detected planes, or any surface if the browser can't restrict to planes. */
+async function planeHitSource(session, viewer) {
+  try {
+    return await session.requestHitTestSource({ space: viewer, entityTypes: ['plane'] });
+  } catch {
+    return session.requestHitTestSource({ space: viewer });
+  }
+}
+
+/** One AR session, frame by frame. */
+class MeasurementRun {
+  constructor({ session, gl, space, hitSource, ui, format, showDebug }) {
+    Object.assign(this, { session, gl, space, hitSource, ui, format, showDebug });
+    this.marker = gl && new SurfaceMarker(gl);
+    this.samples = [];
+    this.startedAt = performance.now();
+    this.outcome = null;
+    this.ended = false;
+    /** Resolves to the outcome once the session has ended. */
+    this.finished = new Promise(resolve => { this.resolveFinished = resolve; });
+  }
+
+  start() {
+    this.session.addEventListener('end', () => {
+      this.ended = true;
+      this.resolveFinished(this.outcome || this.unfinished());
+    });
+    this.session.requestAnimationFrame((t, frame) => this.onFrame(frame));
+  }
+
+  /** Ends the session; `outcome` is what measure() resolves to. */
+  finish(outcome) {
+    if (this.ended || this.outcome) return;
+    this.outcome = outcome;
+    try { this.hitSource.cancel(); } catch { /* already gone */ }
+    this.session.end().catch(() => {});
+  }
+
+  unfinished() {
+    return performance.now() - this.startedAt > TIMEOUT_MS ? { timedOut: true } : { cancelled: true };
+  }
+
+  onFrame(frame) {
+    if (this.ended || this.outcome) return;
+    this.session.requestAnimationFrame((t, next) => this.onFrame(next));
+    this.clearLayer();
+    if (performance.now() - this.startedAt > TIMEOUT_MS) {
+      this.finish({ timedOut: true });
+      return;
+    }
+    const pose = frame.getViewerPose(this.space);
+    const hits = frame.getHitTestResults(this.hitSource);
+    const surface = pose && hits.length ? hits[0].getPose(this.space) : null;
+    if (!surface) {
+      this.say('Aim at the wet sand where the waves stop');
+      return;
+    }
+    const level = surfaceTiltCos(surface) >= LEVEL;
+    this.drawMarker(pose, surface, level);
+    this.showDebugInfo(pose, surface);
+    if (level) this.addSample(pose.transform.position.y - surface.transform.position.y);
+    else this.say('That surface is not level. Aim at flat sand');
+  }
+
+  addSample(height) {
+    this.samples.push(height);
+    if (this.samples.length > SAMPLES) this.samples.shift();
+    const sorted = [...this.samples].sort((a, b) => a - b);
+    const median = sorted[sorted.length >> 1];
+    this.ui.arValue.textContent = this.format(median);
+    this.say('Hold still…');
+    if (this.samples.length === SAMPLES && spread(sorted) < AGREE_M) this.finish({ height: median });
+  }
+
+  clearLayer() {
+    const layer = this.session.renderState.baseLayer;
+    if (!this.gl || !layer) return;
+    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, layer.framebuffer);
+    this.gl.clearColor(0, 0, 0, 0);
+    this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+  }
+
+  drawMarker(pose, surface, level) {
+    if (!this.marker) return;
+    const layer = this.session.renderState.baseLayer;
+    for (const view of pose.views) {
+      const vp = layer.getViewport(view);
+      this.gl.viewport(vp.x, vp.y, vp.width, vp.height);
+      this.marker.draw(view.projectionMatrix, view.transform.inverse.matrix, surface.transform.matrix, level, this.showDebug());
+    }
+  }
+
+  showDebugInfo(pose, surface) {
+    const debug = this.ui.arDebug;
+    debug.hidden = !this.showDebug();
+    if (debug.hidden) return;
+    const p = pose.transform.position, s = surface.transform.position;
+    const tilt = Math.acos(Math.max(-1, Math.min(1, surfaceTiltCos(surface)))) * 180 / Math.PI;
+    const aim = Math.hypot(p.x - s.x, p.y - s.y, p.z - s.z);
+    const sorted = [...this.samples].sort((a, b) => a - b);
+    debug.textContent = `samples ${this.samples.length}/${SAMPLES}  spread ${(spread(sorted) * 100).toFixed(1)} cm\n`
+      + `tilt ${tilt.toFixed(1)}°  aim ${aim.toFixed(2)} m  views ${pose.views.length}`;
+  }
+
+  say(text) {
+    this.ui.arText.textContent = text;
+  }
+}
+
+/** Cosine of the angle between the surface normal (its local y axis) and vertical. */
+function surfaceTiltCos(surface) {
+  const q = surface.transform.orientation;
+  return 1 - 2 * (q.x * q.x + q.z * q.z);
+}
+
+/** Spread of sorted samples: the middle 26 of 30 (ignoring two at each end), or all of them before that. */
+function spread(sorted) {
+  if (sorted.length >= SAMPLES) return sorted[SAMPLES - 3] - sorted[2];
+  return sorted.length ? sorted[sorted.length - 1] - sorted[0] : 0;
+}
+
+// ===== Debug view ================================================================================
+
+// The Debug view: what each stage decided, drawn over the live camera.
+//   cyan / pink        white water / new white water
+//   yellow lines       distance on the water (5–100 m), from phone height, lens and horizon
+//   grey dotted line   coarse horizon; green / red dots: edges the horizon uses / rejects
+//   pink box           largest patch of new white and the decision about it
+//   yellow box         full-resolution re-measurement and the column measured
+// plus a panel of numbers in the bottom-left corner.
+
+const DISTANCES_M = [5, 10, 20, 50, 100];
+const MEASURE_SHOWN_MS = 2500;
+const REJECT_SHOWN_MS = 3000;
+
+class DebugOverlay {
+  constructor() {
+    this.mask = document.createElement('canvas');
+    this.maskContext = this.mask.getContext('2d');
+    this.hasMask = false;
+  }
+
+  /** Paints the white / new-white masks of the last analysis (once per snapshot, not per frame). */
+  updateMask(analysis) {
+    this.hasMask = Boolean(analysis);
+    if (!analysis) return;
+    const { width, height, white, fresh } = analysis;
+    if (this.mask.width !== width || this.mask.height !== height) { this.mask.width = width; this.mask.height = height; }
+    const pixels = this.maskContext.createImageData(width, height), out = pixels.data;
+    for (let j = 0; j < white.length; j++) {
+      const o = j * 4;
+      if (fresh[j]) out.set([255, 60, 210, 230], o);
+      else if (white[j]) out.set([0, 210, 255, 120], o);
+    }
+    this.maskContext.putImageData(pixels, 0, 0);
+  }
+
+  clearMask() {
+    this.hasMask = false;
+  }
+
+  drawMask(screen) {
+    if (!this.hasMask) return;
+    const ctx = screen.context, b = screen.frameBox();
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.mask, b.x, b.y, b.w, b.h);
+    ctx.restore();
+  }
+
+  /**
+   * @param screen  the overlay Screen
+   * @param state   {
+   *   view, horizon (HorizonTracker), detector (WaveDetector), motion, timing,
+   *   recentWaves: [{ trough, crest, measurement }], measuredHeight (bool), netRise, format
+   * }
+   */
+  draw(screen, state) {
+    const ctx = screen.context, s = screen.scale;
+    ctx.font = `${11 * s}px ui-monospace,Menlo,monospace`;
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 1.25 * s;
+    const line = state.horizon.display, now = performance.now();
+    if (line) this.drawDistances(screen, state.view, line);
+    this.drawHorizonEdges(screen, state.horizon.debug);
+    this.drawDetection(screen, state.detector, now);
+    this.drawWaveLabels(screen, state.recentWaves, state.format);
+    this.drawPanel(screen, state);
+  }
+
+  /** Lines of equal distance across the water; labels skipped where they'd overlap near the horizon. */
+  drawDistances(screen, view, horizon) {
+    const ctx = screen.context, s = screen.scale;
+    ctx.strokeStyle = 'rgba(255,226,110,.75)';
+    ctx.fillStyle = '#ffe26e';
+    let lastLabelY = Infinity;
+    for (const distance of DISTANCES_M) {
+      const points = view.pointsAtDistance(distance, horizon).map(p => screen.toCanvas(p));
+      if (points.length < 2) continue;
+      ctx.beginPath();
+      points.forEach((p, i) => (i ? ctx.lineTo(...p) : ctx.moveTo(...p)));
+      ctx.stroke();
+      const [x, y] = points[0];
+      if (lastLabelY - y > 13 * s) { ctx.fillText(`${distance} m`, x + 4 * s, y - 7 * s); lastLabelY = y; }
+    }
+  }
+
+  drawHorizonEdges(screen, debug) {
+    const ctx = screen.context, s = screen.scale;
+    if (debug.coarse) {
+      screen.lineAcross(debug.coarse, 'rgba(200,200,200,.6)', 1.25, [2, 4]);
+      ctx.lineWidth = 1.25 * s;
+    }
+    for (const p of debug.candidates) {
+      const used = debug.used.includes(p), [x, y] = screen.toCanvas(p);
+      ctx.fillStyle = used ? '#4cff8a' : '#ff5a5a';
+      ctx.beginPath();
+      ctx.arc(x, y, (used ? 3.5 : 2.5) * s, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+  }
+
+  drawDetection(screen, detector, now) {
+    const ctx = screen.context, s = screen.scale, b = screen.frameBox(), debug = detector.debug;
+    const box = r => [b.x + r.x * b.w, b.y + r.y * b.h, r.w * b.w, r.h * b.h];
+    if (debug.patchBox) {
+      ctx.strokeStyle = debug.state === 'NEW WAVE' ? '#ff3fd0' : 'rgba(255,63,208,.55)';
+      const [x, y, w, h] = box(debug.patchBox);
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.fillText(debug.state, x, y - 8 * s);
+    }
+    const m = debug.measured;
+    if (m && now - m.at < MEASURE_SHOWN_MS) {
+      ctx.strokeStyle = '#ffe26e';
+      ctx.strokeRect(...box(m.box));
+      ctx.lineWidth = 2 * s;
+      ctx.beginPath();
+      ctx.moveTo(...screen.toCanvas(m.crest));
+      ctx.lineTo(...screen.toCanvas(m.trough));
+      ctx.stroke();
+      ctx.lineWidth = 1.25 * s;
+    }
+    if (debug.lastReject && now - debug.lastReject.at < REJECT_SHOWN_MS) {
+      ctx.fillStyle = '#ff9a5a';
+      ctx.fillText(`ignored: ${debug.lastReject.reason}`, b.x + 8 * s, b.y + 64 * s);
+    }
+  }
+
+  drawWaveLabels(screen, waves, format) {
+    const ctx = screen.context, s = screen.scale;
+    ctx.fillStyle = '#e3f0f2';
+    for (const { crest, measurement } of waves) {
+      if (!measurement) continue;
+      const [x, y] = screen.toCanvas(crest);
+      const distance = measurement.distance != null ? measurement.distance.toFixed(0) : '?';
+      ctx.fillText(`${format(measurement.height)} @ ${distance} m`, x + 9 * s, y);
+    }
+  }
+
+  drawPanel(screen, state) {
+    const ctx = screen.context, s = screen.scale, b = screen.frameBox();
+    const lines = panelLines(state);
+    const pad = 6 * s, lineHeight = 15 * s;
+    const width = Math.max(...lines.map(l => ctx.measureText(l).width)) + pad * 2;
+    const height = lines.length * lineHeight + pad * 2;
+    const x = b.x + 8 * s, y = b.y + b.h - height - 8 * s;
+    ctx.fillStyle = 'rgba(0,0,0,.62)';
+    ctx.fillRect(x, y, width, height);
+    ctx.fillStyle = '#e3f0f2';
+    lines.forEach((line, i) => ctx.fillText(line, x + pad, y + pad + lineHeight * (i + 0.5)));
+  }
+}
+
+function panelLines({ view, horizon, detector, motion, timing, measuredHeight, netRise }) {
+  const signed = v => (v > 0 ? '+' : '') + v;
+  const line = horizon.display;
+  const { roll, pitch } = line ? view.angles(line) : { roll: 0, pitch: 0 };
+  const edges = horizon.debug;
+  const strips = new Set(edges.candidates.map(p => p.strip)).size;
+  const d = detector.debug;
+  return [
+    `cam ${view.width}x${view.height}  f ${view.focal | 0} px`,
+    `horizon ${line ? (horizon.isPicked ? edges.mode : 'auto') : 'none'}  edges ${edges.used.length}/${strips}`,
     `roll ${roll.toFixed(1)}°  pitch ${pitch.toFixed(1)}° down`,
-    `motion ${sg(D.dx|0)},${sg(D.dy|0)} px ${D.track===false?'(lost)':''} roll ${sg(+(D.dRoll||0).toFixed(1))}°${D.gyro?' gyro!':''}  ${(D.rate||0).toFixed(1)} Hz`,
-    `white >${D.thr|0}  ${D.state||'-'}`,
-    `ignored so far ${D.ign||0}  phone moved ${sg(Math.round((D.zNet||0)*100))} cm`,
-    `proc ${(D.ms||0).toFixed(1)} ms  h ${h.toFixed(2)} m${hMeasured!=null?' AR':''}`];
-  const pad=6*dpr,lh=15*dpr,wd=Math.max(...lines.map(l=>cx.measureText(l).width))+pad*2,ht=lines.length*lh+pad*2,x0=b.x+8*dpr,y0=b.y+b.h-ht-8*dpr;
-  cx.fillStyle='rgba(0,0,0,.62)';cx.fillRect(x0,y0,wd,ht);cx.fillStyle='#e3f0f2';lines.forEach((l,i)=>cx.fillText(l,x0+pad,y0+pad+lh*(i+.5)));
+    `motion ${signed(motion.dx | 0)},${signed(motion.dy | 0)} px ${motion.trusted === false ? '(lost)' : ''} `
+      + `roll ${signed(+(motion.roll || 0).toFixed(1))}°${motion.gyroFast ? ' gyro!' : ''}  ${(timing.rate || 0).toFixed(1)} Hz`,
+    `white >${detector.analysis ? detector.analysis.threshold | 0 : '–'}  ${d.state || '-'}`,
+    `ignored so far ${d.ignored}  phone moved ${signed(Math.round(netRise * 100))} cm`,
+    `proc ${(timing.ms || 0).toFixed(1)} ms  h ${view.phoneHeight.toFixed(2)} m${measuredHeight ? ' AR' : ''}`,
+  ];
 }
-cv.addEventListener('pointerdown',e=>{if(!stream)return;const p=toN(e);
-  if(review){const P=review.cur.p,i=nearest(P,p);P[i]=p;drag={i};cv.setPointerCapture(e.pointerId);updateReview();return;}
-  if(calib){if(calib.pts.length<2){calib.pts.push(p);
-      if(calib.pts.length===1)$('cbTxt').textContent='Tap the top of their head';
-      else{$('cbLbl').hidden=false;$('cbApply').hidden=false;calibPreview();}}
-    else{const i=nearest(calib.pts,p);calib.pts[i]=p;drag={i,cal:true};cv.setPointerCapture(e.pointerId);calibPreview();}
-    return;}
-  if(setting){tp.push(p);if(tp.length===2){hz=tp[0].x<tp[1].x?tp:[tp[1],tp[0]];hzFrame=hzTrack=hz;trackMiss=0;hzConf=1;tp=[];setting=false;manual=true;$('setHz').setAttribute('aria-pressed','false');$('setHz').textContent='Auto horizon';}}
-  else{const L=frozen?(hzFrame||hz):hz;if(!L)return;tp.push(p);if(tp.length===2){
-      const w={p:tp,hz:L.map(q=>({...q})),m:null};tp=[];
-      w.m=height(w);waves.push(w);if(frozen)toggleFreeze();}}
-  status();stats();});
-cv.addEventListener('pointermove',e=>{if(!drag)return;const p=toN(e);if(drag.cal&&calib){calib.pts[drag.i]=p;calibPreview();}else if(review){review.cur.p[drag.i]=p;updateReview();}});
-const endDrag=()=>{drag=null;};cv.addEventListener('pointerup',endDrag);cv.addEventListener('pointercancel',endDrag);
-$('rvSave').onclick=()=>{if(!review)return;const v=review.cur,w={p:v.p,hz:v.hz,m:null,auto:true,confirmed:true};w.m=height(w);if(w.m!=null){waves.push(w);flashT=performance.now();stats();}nextReview();};
-$('rvPrev').onclick=()=>{if(review&&review.vi>0)showView(review.vi-1);};$('rvNext').onclick=()=>{if(review&&review.vi<review.views.length-1)showView(review.vi+1);};
-$('rvSkip').onclick=()=>{if(!review)return;D.ign=(D.ign||0)+1;nextReview();};
-$('calBtn').onclick=startCalib;
-$('hrLater').onclick=remDismiss;$('hrGo').onclick=()=>{remKind=null;status();if(arSupported)$('arBtn').click();else startCalib();};$('cbCancel').onclick=endCalib;$('cbH').oninput=()=>{if(calib&&calib.pts.length===2)calibPreview();};
-$('cbApply').onclick=()=>{const ref=refMeters(),h=calib&&calib.pts.length===2?solveH(calib.pts,calib.hz,ref):null;if(!h)return;
-  hMeasured=h;$('h').value=Math.min(3,Math.max(0.05,h));
-  $('arMsg').textContent=`Calibrated from a ${fmtLen(ref)} person: phone ${fmtLen(h)} above the water. Every 10 cm their real height differs moves this by about ${fmtLen(h*0.1/ref)}.`;
-  $('arMsg').hidden=false;endCalib();showH();recompute();hSet();};
-$('cfmBtn').onclick=()=>{confirmOn=!confirmOn;try{localStorage.setItem('confirm',confirmOn?'1':'0');}catch{}$('cfmBtn').setAttribute('aria-pressed',confirmOn);};
-$('cfmBtn').setAttribute('aria-pressed',confirmOn);
-function toggleFreeze(){frozen=!frozen;frozen?vid.pause():vid.play();$('freeze').textContent=frozen?'Resume':'Freeze';}
-$('freeze').onclick=toggleFreeze;
-$('auto').onclick=()=>{auto=!auto;$('auto').setAttribute('aria-pressed',auto);bg=null;ev=null;live=null;status();};
-$('setHz').onclick=()=>{if(manual&&!setting){manual=false;hz=null;hzFrame=null;hzTrack=null;$('setHz').textContent='Set horizon';status();return;}
-  setting=!setting;tp=[];$('setHz').setAttribute('aria-pressed',setting);status();};
-$('undo').onclick=()=>{if(tp.length)tp.pop();else waves.pop();stats();};
-$('h').oninput=()=>{hMeasured=null;$('arMsg').hidden=true;showH();recompute();hSet();};
-$('lens').oninput=recompute;
-function setDebug(on){dbg=on;try{localStorage.setItem('debug',on?'1':'0');}catch{}$('dbgBtn').setAttribute('aria-pressed',on);if(!on)D.maskOn=false;}
-$('dbgBtn').onclick=()=>setDebug(!dbg);setDebug(dbg);
-$('uCm').onclick=()=>setUnits('cm');$('uFt').onclick=()=>setUnits('ft');
-setUnits(units);
-async function startCamera(){
-  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920}},audio:false});
-  vid.srcObject=stream;await vid.play();bg=null;prevC=null;prevL2=null;ev=null;hold=null;
-}
-function stopCamera(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;}
-$('go').onclick=async()=>{
-  try{if(window.DeviceMotionEvent&&typeof DeviceMotionEvent.requestPermission==='function')DeviceMotionEvent.requestPermission().catch(()=>{});
-    await startCamera();$('start').hidden=true;fit();stats();draw();setInterval(detect,150);
-    setTimeout(()=>{if(hSetAt==null)remind('notset');},1500);
-    try{await navigator.wakeLock?.request('screen');}catch{}
-  }catch(err){$('err').textContent='Camera unavailable: '+err.message+'. Open the page over https in Safari or Chrome and allow camera access.';}
-};
 
-// ===== Optional: measure phone height with AR (WebXR hit-test on the sand plane) =====
-// Minimal WebGL drawing for the AR step, in the detected surface's own frame (y axis = surface normal):
-// a 1 m grid with 10 cm lines lying on the surface, and an aiming ring at the hit point.
-function makeArRenderer(gl){
-  const sh=(t,src)=>{const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);return s;};
-  const pr=gl.createProgram();
-  gl.attachShader(pr,sh(gl.VERTEX_SHADER,'attribute vec3 p;uniform mat4 mvp;void main(){gl_Position=mvp*vec4(p,1.0);}'));
-  gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,'precision mediump float;uniform vec4 col;void main(){gl_FragColor=col;}'));
-  gl.linkProgram(pr);
-  const grid=[];for(let i=-5;i<=5;i++){const v=i/10;grid.push(-.5,0,v,.5,0,v,v,0,-.5,v,0,.5);}
-  const ring=[];for(let i=0;i<=48;i++){const a=i/48*2*Math.PI,c=Math.cos(a),s=Math.sin(a);ring.push(c*.10,0,s*.10,c*.14,0,s*.14);}
-  const buf=a=>{const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(a),gl.STATIC_DRAW);return{b,n:a.length/3};};
-  // N: a 30 cm post along the surface normal (two crossed strips, 2 cm wide)
-  const N=buf([-.01,0,0,.01,0,0,-.01,.3,0,.01,.3,0, 0,0,-.01,0,0,.01,0,.3,-.01,0,.3,.01]),G=buf(grid),R=buf(ring),loc=gl.getAttribLocation(pr,'p'),uM=gl.getUniformLocation(pr,'mvp'),uC=gl.getUniformLocation(pr,'col');
-  const mul=(a,b)=>{const o=new Float32Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+r]*b[c*4+k];o[c*4+r]=s;}return o;}; // column-major a·b
-  return(proj,viewInv,model,level,showNormal)=>{
-    gl.useProgram(pr);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.enableVertexAttribArray(loc);
-    gl.uniformMatrix4fv(uM,false,mul(proj,mul(viewInv,model)));
-    gl.bindBuffer(gl.ARRAY_BUFFER,G.b);gl.vertexAttribPointer(loc,3,gl.FLOAT,false,0,0);
-    gl.uniform4f(uC,1,1,1,level?.6:.25);gl.drawArrays(gl.LINES,0,G.n);
-    gl.bindBuffer(gl.ARRAY_BUFFER,R.b);gl.vertexAttribPointer(loc,3,gl.FLOAT,false,0,0);
-    if(level)gl.uniform4f(uC,.235,.765,.812,.95);else gl.uniform4f(uC,1,.478,.42,.95);
-    gl.drawArrays(gl.TRIANGLE_STRIP,0,R.n);
-    if(showNormal){gl.bindBuffer(gl.ARRAY_BUFFER,N.b);gl.vertexAttribPointer(loc,3,gl.FLOAT,false,0,0);gl.uniform4f(uC,1,.89,.43,1);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.drawArrays(gl.TRIANGLE_STRIP,4,4);}
-  };
+// ===== App =======================================================================================
+
+// Wave Gauge Live: wires the camera, the analysis and the controls together.
+//
+// Every TICK_MS the app takes one snapshot: it estimates how the camera moved, finds the horizon, and lets the
+// wave detector look for new white water. Drawing runs separately at screen rate. Wave heights are always
+// computed from the current phone height and lens, so changing either updates every reading.
+
+const TICK_MS = 150;
+const DEFAULT_PHONE_HEIGHT = 1.2;
+const DEFAULT_LENS_MM = 26;
+const SLIDER_RANGE = [0.05, 3];
+const LOGGED_FLASH_MS = 2000;
+const NOT_SET_REMINDER_DELAY_MS = 1500;
+
+class App {
+  /** @param ui  the page's elements, keyed by id in camelCase */
+  constructor(ui) {
+    this.ui = ui;
+    this.video = ui.camera;
+    this.screen = new Screen(ui.overlay, this.video);
+    this.prefs = loadPreferences();
+
+    this.horizon = new HorizonTracker();
+    this.motion = new CameraMotion();
+    this.detector = new WaveDetector({ source: this.video, onWave: wave => this.onWaveDetected(wave) });
+    this.detector.offerUnverified = this.prefs.confirm;
+    this.debugOverlay = new DebugOverlay();
+    this.reminder = new HeightReminder({
+      canPrompt: () => !this.review && !this.calibration,
+      onChange: () => this.renderStatus(),
+    });
+    this.ar = new ArHeightMeasure(ui, { format: m => this.format(m), showDebug: () => this.prefs.debug });
+    this.reviewSheet = new ReviewSheet(ui, {
+      onSave: () => this.saveReview(),
+      onSkip: () => this.skipReview(),
+      onStep: delta => this.stepReview(delta),
+    });
+    this.calibrationSheet = new CalibrationSheet(ui, {
+      onApply: () => this.applyCalibration(),
+      onCancel: () => this.endCalibration(),
+      onHeightInput: () => this.onPersonHeightTyped(),
+    });
+
+    this.stream = null;
+    this.arSupported = false;
+    this.auto = true;
+    this.frozen = false;
+    this.pickingHorizon = false;
+    this.taps = [];              // tapped so far: two horizon points, or a wave's trough then crest
+    this.waves = [];             // measured waves: { trough, crest, horizon }
+    this.measuredHeight = null;  // from Calibrate or Measure; overrides the slider
+    this.reviews = [];           // detected waves waiting for confirmation
+    this.review = null;          // the one shown
+    this.calibration = null;
+    this.drag = null;            // handle being dragged: { index }
+    this.lastLoggedAt = -Infinity;
+    this.lastMotion = { dx: 0, dy: 0, roll: 0, trusted: true, gyroFast: false, moving: false };
+    this.timing = { ms: 0, rate: 0, last: 0 };
+  }
+
+  init() {
+    this.bindControls();
+    this.bindPointer();
+    addEventListener('resize', () => this.screen.fit());
+    this.setUnits(this.prefs.units);
+    this.setDebug(this.prefs.debug);
+    this.ui.confirm.setAttribute('aria-pressed', this.prefs.confirm);
+    this.checkArSupport();
+  }
+
+  // ---------- settings and measurement ----------
+
+  get phoneHeight() {
+    return this.measuredHeight ?? (+this.ui.phoneHeight.value || DEFAULT_PHONE_HEIGHT);
+  }
+
+  view(phoneHeight = this.phoneHeight) {
+    const { width, height } = frameSize(this.video);
+    const lens = +this.ui.lens.value || DEFAULT_LENS_MM;
+    return new View({ width, height, focal: focalLengthPx(lens, width, height), phoneHeight });
+  }
+
+  /** { height, distance } of a wave with the current settings, or null. */
+  measure(wave) {
+    if (!this.video.videoWidth) return null;
+    return this.view().measureWave(wave.trough, wave.crest, wave.horizon);
+  }
+
+  format(metres) {
+    return formatLength(metres, this.prefs.units);
+  }
+
+  // ---------- camera ----------
+
+  async start() {
+    requestMotionPermission();
+    try {
+      await this.startCamera();
+    } catch (error) {
+      this.ui.startError.textContent = `Camera unavailable: ${error.message}. Open the page over https in Safari or Chrome and allow camera access.`;
+      return;
+    }
+    this.ui.start.hidden = true;
+    this.screen.fit();
+    this.renderStats();
+    this.drawLoop();
+    setInterval(() => this.tick(), TICK_MS);
+    setTimeout(() => this.reminder.remindIfNotSet(), NOT_SET_REMINDER_DELAY_MS);
+    keepScreenOn();
+  }
+
+  async startCamera() {
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 } },
+      audio: false,
+    });
+    this.video.srcObject = this.stream;
+    await this.video.play();
+    this.detector.restartAll();
+    this.motion.reset();
+  }
+
+  stopCamera() {
+    if (this.stream) this.stream.getTracks().forEach(track => track.stop());
+    this.stream = null;
+  }
+
+  // ---------- analysis ----------
+
+  /** One snapshot: camera motion, horizon, waves. */
+  tick() {
+    if (this.frozen || this.calibration || !this.stream || !this.video.videoWidth) return;
+    const started = performance.now();
+    const image = downscale(this.video);
+    const light = brightness(image);
+    const previous = this.horizon.current;
+    const shift = this.motion.imageShift(light, image.width, image.height, previous);
+    const horizon = this.horizon.update(image, this.video, shift.dy);
+    this.lastMotion = this.motion.combine(shift, horizon, previous, image, frameSize(this.video));
+    this.detector.update({
+      image, brightness: light, horizon,
+      horizonSeen: Boolean(this.horizon.display),
+      motion: this.lastMotion, view: this.view(), auto: this.auto, now: performance.now(),
+    });
+    if (this.prefs.debug) this.debugOverlay.updateMask(this.detector.analysis);
+    this.timing = { ms: performance.now() - started, rate: this.timing.last ? 1000 / (started - this.timing.last) : 0, last: started };
+    this.renderStatus();
+  }
+
+  // ---------- drawing ----------
+
+  drawLoop() {
+    this.draw();
+    requestAnimationFrame(() => this.drawLoop());
+  }
+
+  draw() {
+    this.screen.clear();
+    if (this.review) this.drawReview();
+    else if (this.calibration) this.drawCalibration();
+    else this.drawLive();
+  }
+
+  drawReview() {
+    const view = this.review.view;
+    this.screen.handles({
+      image: view.snapshot, horizon: view.horizon, points: this.review.points,
+      labels: ['trough', 'crest'], color: COLORS.wave, dragging: this.drag?.index,
+    });
+  }
+
+  drawCalibration() {
+    const c = this.calibration;
+    this.screen.handles({
+      image: c.snapshot, horizon: c.horizon, points: c.points,
+      labels: c.labels(), color: COLORS.person, dragging: this.drag?.index,
+    });
+  }
+
+  drawLive() {
+    const screen = this.screen;
+    if (this.frozen) screen.drawImage(this.video);
+    if (this.prefs.debug) this.debugOverlay.drawMask(screen);
+    if (this.horizon.display) screen.horizon(this.horizon.display, this.horizon.isConfident);
+    for (const wave of this.waves.slice(-3)) screen.marks([wave.trough, wave.crest], COLORS.waveFaded);
+    screen.marks(this.taps, this.pickingHorizon ? COLORS.horizon : COLORS.wave);
+    const live = this.detector.live;
+    if (live && !this.frozen) screen.marks([live.trough, live.crest], COLORS.live, [6, 4]);
+    if (this.prefs.debug && this.stream) this.debugOverlay.draw(screen, this.debugState());
+  }
+
+  debugState() {
+    return {
+      view: this.view(),
+      horizon: this.horizon,
+      detector: this.detector,
+      motion: this.lastMotion,
+      timing: this.timing,
+      recentWaves: this.waves.slice(-3).map(wave => ({ crest: wave.crest, measurement: this.measure(wave) })),
+      measuredHeight: this.measuredHeight !== null,
+      netRise: this.reminder.netRise,
+      format: m => this.format(m),
+    };
+  }
+
+  // ---------- taps and drags ----------
+
+  bindPointer() {
+    const canvas = this.ui.overlay;
+    canvas.addEventListener('pointerdown', event => this.onPointerDown(event));
+    canvas.addEventListener('pointermove', event => this.onPointerMove(event));
+    const release = () => { this.drag = null; };
+    canvas.addEventListener('pointerup', release);
+    canvas.addEventListener('pointercancel', release);
+  }
+
+  onPointerDown(event) {
+    if (!this.stream) return;
+    const p = this.screen.fromPointer(event);
+    if (this.review) {
+      this.grabReviewHandle(p, event);
+    } else if (this.calibration) {
+      this.tapCalibration(p, event);
+    } else {
+      if (this.pickingHorizon) this.tapHorizonPoint(p);
+      else this.tapWavePoint(p);
+      this.renderStats();
+    }
+  }
+
+  onPointerMove(event) {
+    if (!this.drag) return;
+    const p = this.screen.fromPointer(event);
+    if (this.calibration) {
+      this.calibration.points[this.drag.index] = p;
+      this.previewCalibration();
+    } else if (this.review) {
+      this.review.movePoint(this.drag.index, p);
+      this.showReview();
+    }
+  }
+
+  startDrag(index, event) {
+    this.drag = { index };
+    this.ui.overlay.setPointerCapture(event.pointerId);
+  }
+
+  /** Two taps on the horizon pick it by hand; it's then followed as the camera moves. */
+  tapHorizonPoint(p) {
+    this.taps.push(p);
+    if (this.taps.length < 2) return;
+    this.horizon.pick(this.taps);
+    this.taps = [];
+    this.pickingHorizon = false;
+    this.ui.setHorizon.setAttribute('aria-pressed', 'false');
+    this.ui.setHorizon.textContent = 'Auto horizon';
+  }
+
+  /** Measuring by hand: tap a wave's trough, then its crest (on the frozen frame if frozen). */
+  tapWavePoint(p) {
+    const horizon = this.frozen ? (this.horizon.current || this.horizon.display) : this.horizon.display;
+    if (!horizon) return;
+    this.taps.push(p);
+    if (this.taps.length < 2) return;
+    const [trough, crest] = this.taps;
+    this.taps = [];
+    this.addWave({ trough, crest, horizon: horizon.map(q => ({ ...q })) });
+    if (this.frozen) this.toggleFreeze();
+  }
+
+  undo() {
+    if (this.taps.length) this.taps.pop();
+    else this.waves.pop();
+    this.renderStats();
+  }
+
+  // ---------- reviewing detected waves ----------
+
+  onWaveDetected({ views }) {
+    if (this.prefs.confirm && views[0].snapshot) {
+      this.reviews.push(new Review(views));
+      if (!this.review) this.nextReview();
+    } else {
+      this.logDetectedWave(views[0]);
+    }
+  }
+
+  nextReview() {
+    this.review = this.reviews.shift() || null;
+    if (this.review) {
+      this.review.select(0);
+      this.showReview();
+    } else {
+      this.reviewSheet.hide();
+    }
+    this.renderStatus();
+  }
+
+  showReview() {
+    this.reviewSheet.show(this.review, this.reviews.length, this.measure(this.review.view), m => this.format(m));
+  }
+
+  grabReviewHandle(p, event) {
+    const index = this.screen.nearest(this.review.points, p);
+    this.review.movePoint(index, p);
+    this.startDrag(index, event);
+    this.showReview();
+  }
+
+  stepReview(delta) {
+    if (!this.review) return;
+    const i = this.review.index + delta;
+    if (i < 0 || i >= this.review.views.length) return;
+    this.review.select(i);
+    this.showReview();
+  }
+
+  saveReview() {
+    if (!this.review) return;
+    this.logDetectedWave(this.review.view);
+    this.nextReview();
+  }
+
+  skipReview() {
+    if (!this.review) return;
+    this.detector.countSkipped();
+    this.nextReview();
+  }
+
+  /** Adds a wave to the session if it can be measured (its trough is below the horizon). */
+  addWave({ trough, crest, horizon }) {
+    const wave = { trough, crest, horizon };
+    if (!this.measure(wave)) return false;
+    this.waves.push(wave);
+    this.renderStats();
+    return true;
+  }
+
+  /** A detected wave (saved from review, or logged directly with Confirm off) also flashes "wave logged". */
+  logDetectedWave(view) {
+    if (!this.addWave(view)) return;
+    this.lastLoggedAt = performance.now();
+    this.renderStatus();
+  }
+
+  // ---------- phone height ----------
+
+  onSliderMoved() {
+    this.measuredHeight = null;
+    this.hideMessage();
+    this.renderPhoneHeight();
+    this.renderStats();
+    this.reminder.markHeightSet();
+  }
+
+  /** A measured height (Calibrate or Measure) overrides the slider. */
+  setMeasuredHeight(metres, message) {
+    this.measuredHeight = metres;
+    this.ui.phoneHeight.value = Math.min(SLIDER_RANGE[1], Math.max(SLIDER_RANGE[0], metres));
+    this.showMessage(message);
+    this.renderPhoneHeight();
+    this.renderStats();
+    this.reminder.markHeightSet();
+  }
+
+  startCalibration() {
+    if (!this.stream || this.review) return;
+    const image = snapshot(this.video);
+    const horizon = findHorizon(image) || this.horizon.current || this.horizon.display;
+    if (!horizon) {
+      this.showMessage('Calibrate needs the horizon in view.');
+      return;
+    }
+    this.calibration = new Calibration(image, horizon);
+    this.calibrationSheet.open(this.prefs.units);
+    this.renderStatus();
+  }
+
+  /** First tap the feet, then the head; after that, taps grab the nearer dot. */
+  tapCalibration(p, event) {
+    const c = this.calibration;
+    if (c.isComplete) {
+      const index = this.screen.nearest(c.points, p);
+      c.points[index] = p;
+      this.startDrag(index, event);
+      this.previewCalibration();
+      return;
+    }
+    c.points.push(p);
+    if (c.isComplete) {
+      this.calibrationSheet.askForHeight();
+      this.previewCalibration();
+    } else {
+      this.calibrationSheet.askForHead();
+    }
+  }
+
+  onPersonHeightTyped() {
+    if (this.calibration?.isComplete) this.previewCalibration();
+  }
+
+  personHeight() {
+    return toMetres(this.calibrationSheet.personHeight, this.prefs.units);
+  }
+
+  calibratedHeight() {
+    return this.calibration.phoneHeight(this.view(DEFAULT_PHONE_HEIGHT), this.personHeight());
+  }
+
+  previewCalibration() {
+    const h = this.calibratedHeight();
+    this.calibrationSheet.preview(h ? this.format(h) : null);
+  }
+
+  applyCalibration() {
+    if (!this.calibration) return;
+    const person = this.personHeight(), h = this.calibratedHeight();
+    if (!h) return;
+    this.endCalibration();
+    this.setMeasuredHeight(h, `Calibrated from a ${this.format(person)} person: phone ${this.format(h)} above the water. `
+      + `Every 10 cm their real height differs moves this by about ${this.format(h * 0.1 / person)}.`);
+  }
+
+  endCalibration() {
+    this.calibration = null;
+    this.calibrationSheet.close();
+    this.detector.restart();       // the camera kept moving while the frame was frozen
+    this.motion.reset();
+    this.renderStatus();
+  }
+
+  async checkArSupport() {
+    this.arSupported = await isArSupported();
+    this.ui.measure.classList.toggle('unavailable', !this.arSupported);
+    this.ui.measure.title = this.arSupported ? 'Measure phone height with AR' : 'AR not available in this browser';
+  }
+
+  async measureWithAr() {
+    if (!this.arSupported) {
+      this.showMessage(window.isSecureContext === false ? 'AR measuring needs the page opened over https.'
+        : 'AR measuring isn’t available in this browser. It needs Chrome on an Android phone with Google Play Services for AR installed (free in the Play Store). Use Calibrate or the slider instead.');
+      return;
+    }
+    this.stopCamera();                          // ARCore needs the camera to itself
+    let outcome;
+    try {
+      outcome = await this.ar.measure();
+    } catch (error) {
+      this.showMessage(`AR could not start (${error.message}). Set the height with the slider.`);
+      await this.startCamera().catch(() => {});   // the message above already says what went wrong
+      return;
+    }
+    this.showArOutcome(outcome);
+    try {
+      await this.startCamera();
+    } catch (error) {
+      this.showMessage(`Camera did not restart: ${error.message}`);
+    }
+  }
+
+  showArOutcome(outcome) {
+    if (outcome.height != null) {
+      this.setMeasuredHeight(outcome.height, `Phone is ${this.format(outcome.height)} above the spot you aimed at. `
+        + 'If that was the water\'s edge, this is your height above the water. Keep the phone at this height.');
+    } else if (outcome.timedOut) {
+      this.showMessage('No steady reading from the sand. Set the height with the slider.');
+    }
+  }
+
+  /** The reminder's "Re-measure" / "Measure" / "Calibrate". */
+  remeasure() {
+    this.reminder.accept();
+    if (this.arSupported) this.measureWithAr();
+    else this.startCalibration();
+  }
+
+  showMessage(text) {
+    this.ui.heightMessage.textContent = text;
+    this.ui.heightMessage.hidden = false;
+  }
+
+  hideMessage() {
+    this.ui.heightMessage.hidden = true;
+  }
+
+  // ---------- controls ----------
+
+  bindControls() {
+    const ui = this.ui;
+    ui.startCamera.onclick = () => this.start();
+    ui.phoneHeight.oninput = () => this.onSliderMoved();
+    ui.lens.oninput = () => this.renderStats();
+    ui.calibrate.onclick = () => this.startCalibration();
+    ui.measure.onclick = () => this.measureWithAr();
+    ui.auto.onclick = () => this.toggleAuto();
+    ui.confirm.onclick = () => this.toggleConfirm();
+    ui.freeze.onclick = () => this.toggleFreeze();
+    ui.setHorizon.onclick = () => this.toggleHorizonPicking();
+    ui.debug.onclick = () => this.setDebug(!this.prefs.debug);
+    ui.undo.onclick = () => this.undo();
+    ui.unitCm.onclick = () => this.setUnits('cm');
+    ui.unitFt.onclick = () => this.setUnits('ft');
+    ui.reminderLater.onclick = () => this.reminder.dismiss();
+    ui.reminderGo.onclick = () => this.remeasure();
+  }
+
+  toggleAuto() {
+    this.auto = !this.auto;
+    this.ui.auto.setAttribute('aria-pressed', this.auto);
+    this.detector.restart();
+    this.renderStatus();
+  }
+
+  toggleConfirm() {
+    this.prefs.confirm = !this.prefs.confirm;
+    saveSetting('confirm', this.prefs.confirm ? '1' : '0');
+    this.ui.confirm.setAttribute('aria-pressed', this.prefs.confirm);
+    this.detector.offerUnverified = this.prefs.confirm;
+  }
+
+  toggleFreeze() {
+    this.frozen = !this.frozen;
+    if (this.frozen) this.video.pause(); else this.video.play();
+    this.ui.freeze.textContent = this.frozen ? 'Resume' : 'Freeze';
+  }
+
+  /** "Set horizon" starts picking two points; "Auto horizon" goes back to detection. */
+  toggleHorizonPicking() {
+    if (this.horizon.isPicked && !this.pickingHorizon) {
+      this.horizon.unpick();
+      this.ui.setHorizon.textContent = 'Set horizon';
+    } else {
+      this.pickingHorizon = !this.pickingHorizon;
+      this.taps = [];
+      this.ui.setHorizon.setAttribute('aria-pressed', this.pickingHorizon);
+    }
+    this.renderStatus();
+  }
+
+  setDebug(on) {
+    this.prefs.debug = on;
+    saveSetting('debug', on ? '1' : '0');
+    this.ui.debug.setAttribute('aria-pressed', on);
+    if (!on) this.debugOverlay.clearMask();
+  }
+
+  setUnits(units) {
+    this.prefs.units = units;
+    saveSetting('units', units);
+    this.ui.unitCm.setAttribute('aria-pressed', units === 'cm');
+    this.ui.unitFt.setAttribute('aria-pressed', units === 'ft');
+    this.renderPhoneHeight();
+    this.renderStats();
+  }
+
+  // ---------- rendering texts ----------
+
+  renderPhoneHeight() {
+    this.ui.phoneHeightValue.textContent = this.format(this.phoneHeight);
+  }
+
+  renderStats() {
+    const ui = this.ui, units = this.prefs.units;
+    const heights = this.waves.map(wave => this.measure(wave)).filter(Boolean).map(m => m.height);
+    const s = summarize(heights);
+    ui.waveCount.textContent = s.count;
+    ui.waveAverage.textContent = formatMaybe(s.average, units);
+    ui.waveBiggest.textContent = formatMaybe(s.biggestThird, units);
+    ui.latest.hidden = s.latest == null;
+    ui.latestHeight.textContent = formatMaybe(s.latest, units);
+    ui.latestLabel.textContent = surfLabel(s.latest);
+    this.renderStatus();
+  }
+
+  renderStatus() {
+    const ui = this.ui, horizonStatus = this.horizon.status();
+    ui.horizonStatus.textContent = horizonStatus.text;
+    ui.horizonStatus.className = horizonStatus.ok ? 'ok' : 'bad';
+    ui.hint.hidden = !this.stream;
+    ui.hint.textContent = this.hintText();
+    this.renderAutoStatus();
+    ui.undo.hidden = !this.taps.length && !this.waves.length;
+    ui.undo.textContent = this.taps.length ? 'Cancel tap' : 'Remove last wave';
+    this.renderReminder();
+  }
+
+  hintText() {
+    if (this.review) return 'Check this wave';
+    if (this.calibration) return 'Calibrate phone height';
+    if (this.pickingHorizon) return this.taps.length ? 'Tap the horizon on the right' : 'Tap the horizon on the left';
+    if (!this.horizon.display) return 'Point at the sea with the horizon in view';
+    if (this.taps.length) return 'Tap the crest';
+    if (this.auto && this.lastMotion.moving) return 'Hold the phone steady';
+    return this.auto ? 'Watching for breaking waves' : 'Tap the trough of a breaking wave';
+  }
+
+  renderAutoStatus() {
+    const recentlyLogged = performance.now() - this.lastLoggedAt < LOGGED_FLASH_MS;
+    const breaking = this.detector.isBreaking;
+    this.ui.autoStatus.textContent =
+      this.review ? 'Auto: waiting for your check'
+        : this.calibration ? 'Auto: paused'
+          : !this.auto ? 'Auto: off'
+            : !this.horizon.display ? 'Auto: needs horizon'
+              : this.lastMotion.moving ? 'Auto: paused, camera moving'
+                : breaking ? 'Auto: wave breaking…'
+                  : recentlyLogged ? 'Auto: wave logged'
+                    : 'Auto: watching';
+    this.ui.autoStatus.classList.toggle('active', breaking || recentlyLogged);
+  }
+
+  renderReminder() {
+    const ui = this.ui;
+    this.reminder.checkTime(performance.now());
+    const texts = this.reminder.texts({ phoneHeight: this.phoneHeight, canUseAr: this.arSupported, format: m => this.format(m) });
+    ui.reminder.hidden = !texts || Boolean(this.review) || Boolean(this.calibration) || !this.stream;
+    if (ui.reminder.hidden) return;
+    ui.reminderText.textContent = texts.message;
+    ui.reminderLater.textContent = texts.later;
+    ui.reminderGo.textContent = texts.go;
+  }
 }
-// Only offered where the browser supports immersive AR (Android Chrome with ARCore); otherwise the slider is used.
-// Always shown; where AR isn't available, tapping it says why instead of the button silently missing.
-let arSupported=false;
-(async()=>{try{arSupported=!!(navigator.xr&&await navigator.xr.isSessionSupported('immersive-ar'));}catch{}
-  $('arBtn').style.opacity=arSupported?'':'0.55';$('arBtn').title=arSupported?'Measure phone height with AR':'AR not available in this browser';})();
-$('arBtn').onclick=async()=>{
-  const msg=t=>{$('arMsg').textContent=t;$('arMsg').hidden=false;};
-  if(!arSupported){msg(window.isSecureContext===false?'AR measuring needs the page opened over https.':
-    'AR measuring isn’t available in this browser. It needs Chrome on an Android phone with Google Play Services for AR installed (free in the Play Store). Use Calibrate or the slider instead.');return;}
-  stopCamera();                                   // ARCore needs the camera to itself
-  let session;
-  try{session=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['hit-test'],optionalFeatures:['dom-overlay'],domOverlay:{root:$('arOverlay')}});}
-  catch(e){msg('AR could not start ('+e.message+'). Set the height with the slider.');try{await startCamera();}catch{}return;}
-  $('arOverlay').hidden=false;$('arVal').textContent='–';
-  const gl=document.createElement('canvas').getContext('webgl',{xrCompatible:true}),drawPlane=gl&&makeArRenderer(gl);
-  session.updateRenderState({baseLayer:new XRWebGLLayer(session,gl)});
-  const local=await session.requestReferenceSpace('local'),viewer=await session.requestReferenceSpace('viewer');
-  let src;try{src=await session.requestHitTestSource({space:viewer,entityTypes:['plane']});}catch{src=await session.requestHitTestSource({space:viewer});}
-  const samples=[],t0=performance.now();let result=null,ended=false;
-  const finish=r=>{if(ended)return;result=r;ended=true;try{src.cancel();}catch{}session.end().catch(()=>{});};
-  $('arCancel').onclick=()=>finish(null);
-  session.addEventListener('end',async()=>{
-    ended=true;$('arOverlay').hidden=true;
-    if(result!=null){hMeasured=result;$('h').value=Math.min(3,Math.max(0.05,result));hSet();
-      msg(`Phone is ${fmtLen(result)} above the spot you aimed at. If that was the water's edge, this is your height above the water. Keep the phone at this height.`);
-      showH();recompute();}
-    else if(performance.now()-t0>20000)msg('No steady reading from the sand. Set the height with the slider.');
-    try{await startCamera();}catch(e){msg('Camera did not restart: '+e.message);}
-  });
-  const onFrame=(t,frame)=>{
-    if(ended)return;session.requestAnimationFrame(onFrame);
-    const layer=session.renderState.baseLayer;if(gl&&layer){gl.bindFramebuffer(gl.FRAMEBUFFER,layer.framebuffer);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);}
-    if(performance.now()-t0>20000){finish(null);return;}
-    const pose=frame.getViewerPose(local),hits=frame.getHitTestResults(src);
-    if(!pose||!hits.length){$('arTxt').textContent='Aim at the wet sand where the waves stop';return;}
-    const hp=hits[0].getPose(local);if(!hp)return;
-    const q=hp.transform.orientation,level=1-2*(q.x*q.x+q.z*q.z)>=0.95;  // surface normal within ~18° of vertical
-    if(drawPlane)for(const view of pose.views){const vp=layer.getViewport(view);gl.viewport(vp.x,vp.y,vp.width,vp.height);
-      drawPlane(view.projectionMatrix,view.transform.inverse.matrix,hp.transform.matrix,level,dbg);}
-    $('arDbg').hidden=!dbg;
-    if(dbg){const vp=pose.transform.position,hpp=hp.transform.position,srt=[...samples].sort((a,b)=>a-b);
-      const tilt=Math.acos(Math.max(-1,Math.min(1,1-2*(q.x*q.x+q.z*q.z))))*180/Math.PI;
-      const spread=srt.length>=30?srt[27]-srt[2]:srt.length?srt[srt.length-1]-srt[0]:0;
-      $('arDbg').textContent=`samples ${samples.length}/30  spread ${(spread*100).toFixed(1)} cm\ntilt ${tilt.toFixed(1)}°  aim ${Math.hypot(vp.x-hpp.x,vp.y-hpp.y,vp.z-hpp.z).toFixed(2)} m  views ${pose.views.length}`;$('arDbg').style.whiteSpace='pre';}
-    if(!level){$('arTxt').textContent='That surface is not level. Aim at flat sand';return;}
-    samples.push(pose.transform.position.y-hp.transform.position.y);if(samples.length>30)samples.shift();
-    const srt=[...samples].sort((a,b)=>a-b),med=srt[srt.length>>1];
-    $('arVal').textContent=fmtLen(med);$('arTxt').textContent='Hold still…';
-    if(samples.length===30&&srt[27]-srt[2]<0.02)finish(med);   // 30 frames agreeing within 2 cm
-  };
-  session.requestAnimationFrame(onFrame);
-};
-addEventListener('resize',fit);
+
+/** iOS asks for permission to read motion sensors; it must come from a tap (Start camera). */
+function requestMotionPermission() {
+  if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function') {
+    DeviceMotionEvent.requestPermission().catch(() => {});
+  }
+}
+
+function keepScreenOn() {
+  navigator.wakeLock?.request('screen').catch(() => {});
+}
+
+// ===== Start =====================================================================================
+
+/** Every element with an id, keyed by the id in camelCase: "review-save" → ui.reviewSave. */
+function elementsById(root) {
+  const ui = {};
+  for (const element of root.querySelectorAll('[id]')) {
+    ui[element.id.replace(/-(\w)/g, (_, letter) => letter.toUpperCase())] = element;
+  }
+  return ui;
+}
+
+const app = new App(elementsById(document));
+app.init();
+window.waveGauge = app;   // for inspecting from the browser console
 </script>
 </body>
 </html>
